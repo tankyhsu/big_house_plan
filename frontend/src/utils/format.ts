@@ -7,3 +7,8 @@ export const fmtPct = (n?: number | null) =>
 export const ymdToDashed = (s: string) => `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
 
 export const dashedToYmd = (s: string) => s.replaceAll("-", "");
+
+export function formatNumber(value: number | null | undefined, decimals: number = 2): string {
+  if (value === null || value === undefined || isNaN(value)) return "-";
+  return value.toFixed(decimals);
+}

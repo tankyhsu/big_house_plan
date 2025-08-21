@@ -22,7 +22,7 @@ export async function postCalc(date: string) {
   return data;
 }
 export async function postSyncPrices(date: string) {
-  const { data } = await client.post("/api/sync-prices", { date });
+  const { data } = await client.post("/api/sync-prices", { date, recalc: true });
   return data;
 }
 export async function createTxn(payload: TxnCreate) {
@@ -65,7 +65,7 @@ export async function fetchCategories(): Promise<CategoryLite[]> {
   return data;
 }
 
-export async function createInstrument(payload: { ts_code: string; name: string; category_id: number; active?: boolean }) {
+export async function createInstrument(payload: { ts_code: string; name: string; category_id: number; active?: boolean; type?: string }) {
   const { data } = await client.post("/api/instrument/create", payload);
   return data;
 }

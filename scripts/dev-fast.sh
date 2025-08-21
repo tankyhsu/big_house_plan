@@ -9,7 +9,6 @@ cd "$ROOT_DIR"
 
 # ---------- 后端 ----------
 echo "==> [backend] 启动 uvicorn on :8000"
-source .venv/bin/activate
 uvicorn backend.api:app --reload --port 8000 &
 BACK_PID=$!
 

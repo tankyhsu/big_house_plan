@@ -45,8 +45,12 @@ export default function Dashboard() {
 
   const onSync = async () => {
     try {
-      await postSyncPrices(ymd);
-      message.success("已触发价格同步（占位）");
+      const res = await postSyncPrices(ymd);
+      if (res.reason === "no_token") {
+        message.info("未配置 TuShare Token，已跳过价格同步");
+      } else {
+        message.success(`已同步价格：${res.updated}/${res.found}`);
+      }
     } catch (e:any) { message.error(e.message); }
   };
 

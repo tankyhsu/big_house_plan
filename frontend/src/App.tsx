@@ -25,7 +25,7 @@ function TopNav() {
         items={[
           { key: "dashboard", label: <Link to="/">Dashboard</Link> },
           { key: "positions", label: <Link to="/positions">持仓编辑</Link> },
-          { key: "txn", label: <Link to="/txn">交易</Link> },
+          { key: "txn", label: <Link to="/txn">交易记录</Link> },
         ]}
         style={{ flex: 1, minWidth: 0 }}
       />

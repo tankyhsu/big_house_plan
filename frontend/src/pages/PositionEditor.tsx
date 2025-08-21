@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { Button, DatePicker, Form, Input, InputNumber, message, Modal, Space, Table, Typography, Empty } from "antd";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import type { PositionRaw } from "../api/types";
-import { fetchPositionRaw, updatePositionOne } from "../api/hooks";
+import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
+import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument } from "../api/hooks";
 
 export default function PositionEditor() {
   const [data, setData] = useState<PositionRaw[]>([]);
@@ -15,6 +15,12 @@ export default function PositionEditor() {
   // 新增持仓 Modal
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm] = Form.useForm();
+
+  // 标的 & 类别（用于登记新标的/下拉选择）
+  const [instOpts, setInstOpts] = useState<InstrumentLite[]>([]);
+  const [categories, setCategories] = useState<CategoryLite[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchTimer = useRef<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -28,9 +34,11 @@ export default function PositionEditor() {
     }
   };
 
-  // ✅ 页面打开时自动加载（进入路由就触发）
+  // ✅ 页面打开时自动加载（持仓 + 下拉数据）
   useEffect(() => {
     load();
+    fetchInstruments().then(setInstOpts).catch(() => {});
+    fetchCategories().then(setCategories).catch(() => {});
   }, []);
 
   const isEditing = (r: PositionRaw) => editKey === r.ts_code;
@@ -59,18 +67,69 @@ export default function PositionEditor() {
     }
   };
 
+  // =============== 新增持仓（含登记新标的） ===============
+  // AutoComplete options
+  const options = useMemo(
+    () =>
+      instOpts.map((i) => ({
+        value: i.ts_code,
+        label: `${i.ts_code}｜${i.name || ""}${i.cat_name ? `（${i.cat_name}${i.cat_sub ? `/${i.cat_sub}` : ""}）` : ""}`,
+      })),
+    [instOpts]
+  );
+
+  const onSearch = (kw: string) => {
+    if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    searchTimer.current = window.setTimeout(async () => {
+      try {
+        setSearching(true);
+        const rows = await fetchInstruments(kw || undefined);
+        setInstOpts(rows);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+  };
+
+  // 判断新标的：根据当前选值是否存在于 instOpts
+  const isNewInstrument = () => {
+    const v = createForm.getFieldValue("ts_code");
+    if (!v) return false;
+    return !instOpts.some(i => i.ts_code === (typeof v === "string" ? v : v?.value));
+  };
+
   const onCreate = async () => {
     try {
       const vals = await createForm.validateFields();
+      const ts_code: string = (typeof vals.ts_code === "string" ? vals.ts_code : vals.ts_code?.value)?.trim();
+      if (!ts_code) throw new Error("请输入/选择 ts_code");
+
+      // 如果是新标的，校验并先创建 instrument
+      if (isNewInstrument()) {
+        // 校验登记区字段
+        await createForm.validateFields(["inst_name", "inst_type", "inst_category_id", "inst_active"]);
+        await createInstrument({
+          ts_code,
+          name: vals.inst_name.trim(),
+          category_id: Number(vals.inst_category_id),
+          active: !!vals.inst_active,
+          type: vals.inst_type,
+        });
+      }
+
+      // 接着创建/更新底仓
       await updatePositionOne({
-        ts_code: vals.ts_code.trim(),
+        ts_code,
         shares: Number(vals.shares),
         avg_cost: Number(vals.avg_cost),
         date: vals.date.format("YYYY-MM-DD"),
       });
-      message.success("已新增持仓");
+
+      message.success(isNewInstrument() ? "已登记新标的并新增持仓" : "已新增持仓");
       setCreateOpen(false);
       createForm.resetFields();
+      // 刷新标的列表（让刚创建的出现在下拉）
+      fetchInstruments(ts_code).then(setInstOpts).catch(()=>{});
       load();
     } catch (e: any) {
       if (e?.errorFields) return;
@@ -78,6 +137,7 @@ export default function PositionEditor() {
     }
   };
 
+  // 列定义
   const columns: ColumnsType<PositionRaw> = [
     {
       title: "类别",
@@ -206,7 +266,7 @@ export default function PositionEditor() {
         />
       </Form>
 
-      {/* 新增持仓 Modal */}
+      {/* 新增持仓 Modal（内置“登记新标的”区块） */}
       <Modal
         title="新增持仓"
         open={createOpen}
@@ -219,17 +279,67 @@ export default function PositionEditor() {
         cancelText="取消"
         destroyOnClose
       >
-        <Form form={createForm} layout="vertical" initialValues={{ date: dayjs() }}>
+        <Form form={createForm} layout="vertical" initialValues={{ date: dayjs(), inst_type: "STOCK", inst_active: true }}>
           <Form.Item
-            label="标的代码（ts_code）"
+            label="标的代码（可下拉选择或直接输入新代码）"
             name="ts_code"
             rules={[
-              { required: true, message: "请输入 ts_code，例如 510300.SH 或 159915.SZ" },
+              { required: true, message: "请输入 ts_code，例如 510300.SH 或 110011" },
               { pattern: /^[0-9A-Za-z.\-]+$/, message: "仅允许字母、数字、点和横线" },
             ]}
           >
-            <Input placeholder="例如 510300.SH" />
+            <AutoComplete
+              options={options}
+              onSearch={onSearch}
+              placeholder="例如 510300.SH 或 基金代码"
+              allowClear
+              notFoundContent={searching ? "搜索中..." : "可直接输入新代码"}
+              filterOption={(inputValue, option) =>
+                (option?.value as string)?.toUpperCase().includes(inputValue.toUpperCase()) ||
+                (option?.label as string)?.toUpperCase().includes(inputValue.toUpperCase())
+              }
+            />
           </Form.Item>
+
+          {/* 当 ts_code 不在现有列表时，展示“登记新标的”扩展表单 */}
+          {isNewInstrument() && (
+            <>
+              <Alert type="info" showIcon style={{ marginBottom: 8 }} message="检测到新代码，需先登记标的基础信息" />
+              <Form.Item label="名称" name="inst_name" rules={[{ required: true, message: "请输入名称" }]}>
+                <Input placeholder="如 沪深300ETF / 某某基金" />
+              </Form.Item>
+              <Form.Item label="类型" name="inst_type" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { value: "STOCK", label: "股票/ETF（交易所收盘价）" },
+                    { value: "FUND", label: "基金（净值）" },
+                    { value: "CASH", label: "现金/货基（不拉行情）" },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="类别" name="inst_category_id" rules={[{ required: true, message: "请选择类别" }]}>
+                <Select
+                  showSearch
+                  options={categories.map((c) => ({
+                    value: c.id,
+                    label: `${c.name}${c.sub_name ? ` / ${c.sub_name}` : ""}`,
+                  }))}
+                  placeholder="选择类别"
+                  filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
+                />
+              </Form.Item>
+              <Form.Item label="启用" name="inst_active" initialValue={true}>
+                <Select
+                  options={[
+                    { value: true, label: "是" },
+                    { value: false, label: "否" },
+                  ]}
+                />
+              </Form.Item>
+              <Divider style={{ margin: "8px 0 12px" }} />
+            </>
+          )}
+
           <Form.Item
             label="持仓份额"
             name="shares"

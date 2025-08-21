@@ -48,4 +48,6 @@ Thumbs.db
 # ---- Environment / Config ----
 .env
 *.local
-config.yaml   # 如果你想提交默认配置，可以移除此行
+config.yaml
+portfolio.db*
+IMPLEMENTATION_PLAN.md

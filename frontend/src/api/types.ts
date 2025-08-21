@@ -86,6 +86,7 @@ export type InstrumentLite = {
   category_id?: number | null;
   cat_name?: string | null;
   cat_sub?: string | null;
+  type?: "STOCK" | "FUND" | "CASH" | string; // NEW
 };
 
 export type CategoryLite = {
