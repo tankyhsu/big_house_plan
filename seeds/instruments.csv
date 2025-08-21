@@ -1,0 +1,12 @@
+ts_code,name,type,currency,category_name,category_sub_name
+510300.SH,华泰柏瑞沪深300ETF,etf,CNY,长期持有,沪深300（ETF）
+512800.SH,银行ETF,etf,CNY,长期持有,银行权重
+159928.SZ,消费ETF(易方达),etf,CNY,长期持有,消费（ETF/板块）
+588000.SH,科创50ETF,etf,CNY,长期持有,科创50
+512000.SH,券商ETF,etf,CNY,长期持有,券商
+513500.SH,纳指ETF(场内),etf,CNY,流动/战术,发达市场宽基（美股/纳指ETF）
+159865.SZ,越南ETF(场内),etf,CNY,流动/战术,新兴市场（越南/印度等）
+513010.SH,恒生红利ETF,etf,CNY,流动/战术,港股红利/中特估
+511880.SH,货币ETF,etf,CNY,空闲资金,货币基金/场内货基
+511010.SH,国债ETF,etf,CNY,空闲资金,短期国债ETF/中短久期债ETF
+CASH.CNY,高流动性定存/大额存单,cash,CNY,空闲资金,高流动性定存/大额存单

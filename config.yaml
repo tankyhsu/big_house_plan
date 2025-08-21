@@ -1,0 +1,8 @@
+db_path: portfolio.db
+unit_amount: 3000
+tushare_token: 
+stop_gain_pct: 0.30
+overweight_band: 0.20
+ma_short: 20
+ma_long: 60
+ma_risk: 200

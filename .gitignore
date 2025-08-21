@@ -1,0 +1,51 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+
+# Virtualenv
+.venv/
+env/
+venv/
+ENV/
+
+# SQLite database & cache
+*.db
+*.sqlite3
+*.sqlite
+*.db-journal
+
+# Jupyter notebooks
+.ipynb_checkpoints
+
+# ---- Node / Frontend ----
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.DS_Store
+
+# ---- Logs ----
+*.log
+logs/
+*.pid
+
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ---- Environment / Config ----
+.env
+*.local
+config.yaml   # 如果你想提交默认配置，可以移除此行
