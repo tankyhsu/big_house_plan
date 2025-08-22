@@ -225,7 +225,8 @@ export default function TxnPage() {
           <Form.Item label="类型" name="type" initialValue="STOCK" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: "STOCK", label: "股票/ETF（交易所收盘价）" },
+                { value: "STOCK", label: "股票（交易所收盘价）" },
+                { value: "ETF", label: "ETF（交易所收盘价）" },
                 { value: "FUND", label: "基金（净值）" },
                 { value: "CASH", label: "现金/货基（不拉行情）" },
               ]}

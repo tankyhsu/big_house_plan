@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert } from "antd";
+import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert, Switch, Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
-import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument } from "../api/hooks";
+import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, deletePositionOne, cleanupZeroPositions } from "../api/hooks";
 
 export default function PositionEditor() {
   const [data, setData] = useState<PositionRaw[]>([]);
   const [loading, setLoading] = useState(false);
   const [editKey, setEditKey] = useState<string | null>(null);
   const [form] = Form.useForm();
-  const [date, setDate] = useState(dayjs());
+
+  // 控制显示 0 仓位
+  const [includeZero, setIncludeZero] = useState(true);
 
   // 新增持仓 Modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -22,10 +24,10 @@ export default function PositionEditor() {
   const [searching, setSearching] = useState(false);
   const searchTimer = useRef<number | null>(null);
 
-  const load = async () => {
+  const load = async (incZero = includeZero) => {
     setLoading(true);
     try {
-      const rows = await fetchPositionRaw();
+      const rows = await fetchPositionRaw(incZero);
       setData(rows);
     } catch (e: any) {
       message.error(e.message);
@@ -34,31 +36,49 @@ export default function PositionEditor() {
     }
   };
 
-  // ✅ 页面打开时自动加载（持仓 + 下拉数据）
+  // 页面打开时加载（持仓 + 下拉）
   useEffect(() => {
-    load();
+    load(true);
     fetchInstruments().then(setInstOpts).catch(() => {});
     fetchCategories().then(setCategories).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // includeZero 变化时刷新
+  useEffect(() => {
+    load(includeZero);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includeZero]);
 
   const isEditing = (r: PositionRaw) => editKey === r.ts_code;
 
+// 1) 顶部 state：删除全局 date
+// const [date, setDate] = useState(dayjs());   // <- 移除
+
+  // 2) 编辑进入时，预填表单含 date
   const edit = (r: PositionRaw) => {
-    form.setFieldsValue({ shares: r.shares, avg_cost: r.avg_cost });
+    form.setFieldsValue({
+      shares: r.shares,
+      avg_cost: r.avg_cost,
+      // 若有 last_update 则用它，否则默认今天
+      date: r.last_update ? dayjs(r.last_update) : dayjs(),
+    });
     setEditKey(r.ts_code);
   };
+
   const cancel = () => setEditKey(null);
 
   const save = async (r: PositionRaw) => {
     try {
       const vals = await form.validateFields();
+      const effDate = vals.date ? vals.date.format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD");
       await updatePositionOne({
         ts_code: r.ts_code,
         shares: typeof vals.shares === "number" ? vals.shares : undefined,
         avg_cost: typeof vals.avg_cost === "number" ? vals.avg_cost : undefined,
-        date: date.format("YYYY-MM-DD"),
+        date: effDate,
       });
-      message.success("已更新");
+      message.success(`已更新（生效日：${effDate}）`);
       setEditKey(null);
       load();
     } catch (e: any) {
@@ -67,8 +87,8 @@ export default function PositionEditor() {
     }
   };
 
-  // =============== 新增持仓（含登记新标的） ===============
-  // AutoComplete options
+  // ====== 新增持仓（含登记新标的）原有逻辑（略） ======
+  // === 下拉选项：将 instrument 列表映射为 AutoComplete options ===
   const options = useMemo(
     () =>
       instOpts.map((i) => ({
@@ -78,6 +98,7 @@ export default function PositionEditor() {
     [instOpts]
   );
 
+  // 搜索节流：输入时动态刷新列表（可直接输入新代码）
   const onSearch = (kw: string) => {
     if (searchTimer.current) window.clearTimeout(searchTimer.current);
     searchTimer.current = window.setTimeout(async () => {
@@ -91,22 +112,23 @@ export default function PositionEditor() {
     }, 250);
   };
 
-  // 判断新标的：根据当前选值是否存在于 instOpts
+  // 判断是否为新代码（不在现有 instrument 列表中）
   const isNewInstrument = () => {
     const v = createForm.getFieldValue("ts_code");
     if (!v) return false;
-    return !instOpts.some(i => i.ts_code === (typeof v === "string" ? v : v?.value));
+    const code = typeof v === "string" ? v : v?.value;
+    return !instOpts.some((i) => i.ts_code === code);
   };
 
+  // 提交“新增持仓”（如遇新代码，先登记 instrument 再写 position）
   const onCreate = async () => {
     try {
       const vals = await createForm.validateFields();
       const ts_code: string = (typeof vals.ts_code === "string" ? vals.ts_code : vals.ts_code?.value)?.trim();
       if (!ts_code) throw new Error("请输入/选择 ts_code");
 
-      // 如果是新标的，校验并先创建 instrument
       if (isNewInstrument()) {
-        // 校验登记区字段
+        // 校验并创建 instrument
         await createForm.validateFields(["inst_name", "inst_type", "inst_category_id", "inst_active"]);
         await createInstrument({
           ts_code,
@@ -117,7 +139,7 @@ export default function PositionEditor() {
         });
       }
 
-      // 接着创建/更新底仓
+      // 写入/更新底仓
       await updatePositionOne({
         ts_code,
         shares: Number(vals.shares),
@@ -128,16 +150,40 @@ export default function PositionEditor() {
       message.success(isNewInstrument() ? "已登记新标的并新增持仓" : "已新增持仓");
       setCreateOpen(false);
       createForm.resetFields();
-      // 刷新标的列表（让刚创建的出现在下拉）
-      fetchInstruments(ts_code).then(setInstOpts).catch(()=>{});
+      // 刷新：让新标的立即出现在下拉 & 列表
+      fetchInstruments(ts_code).then(setInstOpts).catch(() => {});
       load();
     } catch (e: any) {
-      if (e?.errorFields) return;
+      if (e?.errorFields) return; // 表单校验错误
       message.error(e.message || "新增失败");
     }
   };
 
-  // 列定义
+  // 只展示与“删除 0 仓位/批量清理/开关”的增量
+  
+  // 删除单条 0 仓位
+  const onDeleteZero = async (ts_code: string) => {
+    try {
+      await deletePositionOne(ts_code, dayjs().format("YYYYMMDD"));
+      message.success("已删除 0 仓位");
+      load();
+    } catch (e: any) {
+      message.error(e.message || "删除失败");
+    }
+  };
+
+  // 批量清理 0 仓位
+  const onCleanupZero = async () => {
+    try {
+      const res = await cleanupZeroPositions(dayjs().format("YYYYMMDD"));
+      message.success(`已清理 ${res.deleted} 条 0 仓位`);
+      load();
+    } catch (e: any) {
+      message.error(e.message || "清理失败");
+    }
+  };
+
+  // 列定义：当 shares===0 时显示删除按钮
   const columns: ColumnsType<PositionRaw> = [
     {
       title: "类别",
@@ -196,49 +242,77 @@ export default function PositionEditor() {
             <InputNumber controls={false} precision={4} style={{ width: 120 }} />
           </Form.Item>
         ) : (
-          record.avg_cost?.toFixed(4)
+          (record.avg_cost ?? 0).toFixed(4)
         ),
     },
-    { title: "最后更新", dataIndex: "last_update", width: 140 },
+    {
+      title: "最后更新",
+      dataIndex: "last_update",
+      width: 180,
+      render: (_: any, record) =>
+        isEditing(record) ? (
+          <Form.Item
+            name="date"
+            style={{ margin: 0 }}
+            rules={[{ required: true, message: "请选择生效日期" }]}
+          >
+            <DatePicker
+              allowClear={false}
+              // 可选：禁止选择未来日期
+              disabledDate={(d) => d && d.isAfter(dayjs(), "day")}
+            />
+          </Form.Item>
+        ) : (
+          record.last_update || "-"
+        ),
+    },
     {
       title: "操作",
       dataIndex: "actions",
       align: "center",
-      width: 220,
-      render: (_, record) => {
+      width: 240,
+      render: (_: any, record) => {
         const editable = isEditing(record);
+        const isZero = Number(record.shares) === 0;
         return editable ? (
           <Space>
-            <Button type="primary" onClick={() => save(record)}>
-              保存
-            </Button>
+            <Button type="primary" onClick={() => save(record)}>保存</Button>
             <Button onClick={cancel}>取消</Button>
           </Space>
         ) : (
           <Space>
-            <DatePicker value={date} onChange={(d) => d && setDate(d)} allowClear={false} size="small" />
             <Button onClick={() => edit(record)}>编辑</Button>
+            {isZero && (
+              <Popconfirm title="确定删除这条 0 仓位吗？" onConfirm={() => onDeleteZero(record.ts_code)}>
+                <Button danger>删除</Button>
+              </Popconfirm>
+            )}
           </Space>
         );
       },
     },
   ];
 
+  // ====== 新增持仓 Modal 省略：沿用你现有实现 ======
+
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Typography.Title level={3} style={{ margin: 0 }}>
-        持仓编辑
-      </Typography.Title>
+      <Typography.Title level={3} style={{ margin: 0 }}>持仓编辑</Typography.Title>
       <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
         用于初始化或纠错。日常变动请使用“交易”功能，便于复盘与审计。
       </Typography.Paragraph>
 
-      {/* 顶部操作条：刷新 + 新增持仓 */}
-      <Space>
-        <Button onClick={load}>刷新</Button>
-        <Button type="primary" onClick={() => setCreateOpen(true)}>
-          新增持仓
-        </Button>
+      {/* 顶部操作条：刷新 + 新增持仓 + 开关 + 批量清理 */}
+      <Space wrap>
+        <Button onClick={() => load()}>刷新</Button>
+        <Button type="primary" onClick={() => setCreateOpen(true)}>新增持仓</Button>
+        <Space align="center">
+          <span>显示 0 仓位</span>
+          <Switch checked={includeZero} onChange={setIncludeZero} />
+        </Space>
+        <Popconfirm title="确定清理所有 0 仓位吗？" onConfirm={onCleanupZero}>
+          <Button danger>清理 0 仓位</Button>
+        </Popconfirm>
       </Space>
 
       <Form form={form} component={false}>
@@ -251,16 +325,7 @@ export default function PositionEditor() {
           pagination={{ pageSize: 15 }}
           locale={{
             emptyText: (
-              <Empty
-                description={
-                  <Space direction="vertical">
-                    <div>暂无持仓数据</div>
-                    <Button type="primary" onClick={load}>
-                      加载当前持仓
-                    </Button>
-                  </Space>
-                }
-              />
+              <Empty description="暂无持仓数据" />
             ),
           }}
         />
@@ -279,12 +344,16 @@ export default function PositionEditor() {
         cancelText="取消"
         destroyOnClose
       >
-        <Form form={createForm} layout="vertical" initialValues={{ date: dayjs(), inst_type: "STOCK", inst_active: true }}>
+        <Form
+          form={createForm}
+          layout="vertical"
+          initialValues={{ date: dayjs(), inst_type: "STOCK", inst_active: true }}
+        >
           <Form.Item
             label="标的代码（可下拉选择或直接输入新代码）"
             name="ts_code"
             rules={[
-              { required: true, message: "请输入 ts_code，例如 510300.SH 或 110011" },
+              { required: true, message: "请输入 ts_code，例如 510300.SH 或 基金代码" },
               { pattern: /^[0-9A-Za-z.\-]+$/, message: "仅允许字母、数字、点和横线" },
             ]}
           >
@@ -311,7 +380,8 @@ export default function PositionEditor() {
               <Form.Item label="类型" name="inst_type" rules={[{ required: true }]}>
                 <Select
                   options={[
-                    { value: "STOCK", label: "股票/ETF（交易所收盘价）" },
+                    { value: "STOCK", label: "股票（交易所收盘价）" },
+                    { value: "ETF", label: "ETF（交易所收盘价）" },
                     { value: "FUND", label: "基金（净值）" },
                     { value: "CASH", label: "现金/货基（不拉行情）" },
                   ]}
@@ -354,7 +424,7 @@ export default function PositionEditor() {
           >
             <InputNumber controls={false} precision={4} style={{ width: "100%" }} placeholder="如 4.5000" />
           </Form.Item>
-          <Form.Item label="日期" name="date" rules={[{ required: true }]}>
+          <Form.Item label="生效日期" name="date" rules={[{ required: true }]}>
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
         </Form>

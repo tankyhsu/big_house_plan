@@ -15,22 +15,17 @@ from pydantic import BaseModel
 
 from .logs import ensure_log_schema, LogContext, search_logs
 from .db import get_conn
-from .services import (
-    # ---- 计算/视图/配置 ----
-    calc, get_dashboard, list_category, list_position, list_signal,
-    get_config, update_config,
-
-    # ---- 数据写入/查询 ----
-    list_txn, create_txn,
-    create_category, create_instrument,
-    set_opening_position, update_position_one, list_positions_raw,
-    list_instruments, list_categories,
-    seed_load, sync_prices_tushare,
-)
+from .services.config_svc import get_config, update_config
+from .services.position_svc import list_positions_raw, set_opening_position, update_position_one, delete_position, cleanup_zero_positions
+from .services.instrument_svc import create_instrument, list_instruments, seed_load
+from .services.category_svc import create_category, list_categories
+from .services.txn_svc import create_txn, list_txn, bulk_txn
+from .services.pricing_svc import sync_prices_tushare
+from .services.calc_svc import calc
+from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal
 
 from threading import Thread
 from datetime import datetime
-from .services import sync_prices_tushare
 from .logs import LogContext, ensure_log_schema
 
 # -----------------------------------------------------------------------------
@@ -362,9 +357,8 @@ class PositionUpdateBody(BaseModel):
     date: str  # YYYY-MM-DD
 
 @app.get("/api/position/raw")
-def api_position_raw():
-    """读取 position 表（底仓），用于‘持仓编辑’页面"""
-    return list_positions_raw()
+def api_position_raw(include_zero: bool = Query(True, description="是否包含 shares<=0 的持仓")):
+    return list_positions_raw(include_zero=include_zero)
 
 @app.post("/api/position/set_opening")
 def api_set_opening_position(body: OpeningPos):
@@ -402,6 +396,40 @@ def api_position_update(body: PositionUpdateBody):
     except ValueError as e:
         log.write("ERROR", str(e))
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+class DeletePosBody(BaseModel):
+    ts_code: str
+    recalc_date: Optional[str] = None  # YYYYMMDD，可选
+
+@app.post("/api/position/delete")
+def api_position_delete(body: DeletePosBody):
+    log = LogContext("DELETE_POSITION")
+    log.set_payload(body.dict())
+    try:
+        n = delete_position(body.ts_code)
+        if body.recalc_date:
+            calc(body.recalc_date, LogContext("CALC_AFTER_POSITION_DELETE"))
+        log.write("OK")
+        return {"message": "ok", "deleted": n}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+class CleanupZeroBody(BaseModel):
+    recalc_date: Optional[str] = None  # YYYYMMDD，可选
+
+@app.post("/api/position/cleanup-zero")
+def api_position_cleanup_zero(body: CleanupZeroBody = CleanupZeroBody()):
+    log = LogContext("CLEANUP_ZERO_POSITIONS")
+    try:
+        n = cleanup_zero_positions()
+        if body.recalc_date:
+            calc(body.recalc_date, LogContext("CALC_AFTER_CLEANUP_ZERO"))
+        log.write("OK")
+        return {"message": "ok", "deleted": n}
     except Exception as e:
         log.write("ERROR", str(e))
         raise HTTPException(status_code=500, detail=str(e))

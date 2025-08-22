@@ -32,10 +32,21 @@ export async function createTxn(payload: TxnCreate) {
 
 import type { PositionRaw } from "./types";
 
-// 读取底仓（position 表）
-export async function fetchPositionRaw(): Promise<PositionRaw[]> {
-  const { data } = await client.get("/api/position/raw");
-  return data;
+
+// === Position raw ===
+export async function fetchPositionRaw(includeZero: boolean = true) {
+  const { data } = await client.get("/api/position/raw", { params: { include_zero: includeZero, nocache: Date.now() } });
+  return data as PositionRaw[];
+}
+
+export async function deletePositionOne(ts_code: string, recalcDate?: string) {
+  const { data } = await client.post("/api/position/delete", { ts_code, recalc_date: recalcDate });
+  return data as { message: string; deleted: number };
+}
+
+export async function cleanupZeroPositions(recalcDate?: string) {
+  const { data } = await client.post("/api/position/cleanup-zero", { recalc_date: recalcDate });
+  return data as { message: string; deleted: number };
 }
 
 // 更新一条底仓
