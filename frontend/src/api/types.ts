@@ -65,6 +65,7 @@ export type PositionRaw = {
   category_id?: number | null;
   cat_name?: string | null;
   cat_sub?: string | null;
+  opening_date?: string | null;  // NEW
 };
 
 export type TxnItem = {

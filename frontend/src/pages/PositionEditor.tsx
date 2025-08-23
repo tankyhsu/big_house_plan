@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert, Switch, Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { Tooltip } from "antd";
+import { fetchIrrBatch } from "../api/hooks";
 import dayjs from "dayjs";
 import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
 import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, deletePositionOne, cleanupZeroPositions } from "../api/hooks";
@@ -183,6 +185,18 @@ export default function PositionEditor() {
     }
   };
 
+  const [irrMap, setIrrMap] = useState<Record<string, number | null>>({});
+
+    // 页面打开时批量拉一次（以今天为估值日；也可以用你页面上的“查看日期”）
+  useEffect(() => {
+    const ymd = dayjs().format("YYYYMMDD");
+    fetchIrrBatch(ymd).then(rows => {
+      const m: Record<string, number | null> = {};
+      rows.forEach(r => { m[r.ts_code] = r.annualized_mwr; });
+      setIrrMap(m);
+    }).catch(()=>{});
+  }, []);
+
   // 列定义：当 shares===0 时显示删除按钮
   const columns: ColumnsType<PositionRaw> = [
     {
@@ -248,7 +262,7 @@ export default function PositionEditor() {
     {
       title: "最后更新",
       dataIndex: "last_update",
-      width: 180,
+      width: 100,
       render: (_: any, record) =>
         isEditing(record) ? (
           <Form.Item
@@ -267,10 +281,45 @@ export default function PositionEditor() {
         ),
     },
     {
+      title: "建仓时间",
+      dataIndex: "opening_date",
+      width: 100,
+      render: (_: any, record) =>
+        isEditing(record) ? (
+          <Form.Item
+            name="date"
+            style={{ margin: 0 }}
+            rules={[{ required: true, message: "请选择建仓日期" }]}
+          >
+            <DatePicker
+              allowClear={false}
+              // 可选：禁止选择未来日期
+              disabledDate={(d) => d && d.isAfter(dayjs(), "day")}
+            />
+          </Form.Item>
+        ) : (
+          record.opening_date || "-"
+        ),
+    },
+    {
+      title: "年化收益（自建仓）",
+      dataIndex: "irr",
+      align: "right",
+      width: 80,
+      render: (_: any, r: PositionRaw) => {
+        const irr = irrMap[r.ts_code];
+        return (
+          <Tooltip title="资金加权收益率（XIRR），考虑加/减仓与分红；以今天为估值日">
+            {typeof irr === "number" ? `${(irr * 100).toFixed(2)}%` : "—"}
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: "操作",
       dataIndex: "actions",
       align: "center",
-      width: 240,
+      width: 180,
       render: (_: any, record) => {
         const editable = isEditing(record);
         const isZero = Number(record.shares) === 0;

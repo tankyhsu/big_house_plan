@@ -80,3 +80,22 @@ export async function createInstrument(payload: { ts_code: string; name: string;
   const { data } = await client.post("/api/instrument/create", payload);
   return data;
 }
+
+export type IrrRow = {
+  ts_code: string;
+  date: string;                  // YYYY-MM-DD
+  annualized_mwr: number | null; // 0.123 -> 12.3%
+  flows: number;
+  used_price_date?: string | null;
+  terminal_value?: number | null;
+};
+
+export async function fetchIrr(ts_code: string, ymd: string) {
+  const { data } = await client.get("/api/position/irr", { params: { ts_code, date: ymd, nocache: Date.now() } });
+  return data as IrrRow;
+}
+
+export async function fetchIrrBatch(ymd: string) {
+  const { data } = await client.get("/api/position/irr/batch", { params: { date: ymd, nocache: Date.now() } });
+  return data as IrrRow[];
+}

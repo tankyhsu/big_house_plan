@@ -6,7 +6,7 @@ from ..logs import LogContext
 # ===== Position Raw CRUD =====
 def list_positions_raw(include_zero: bool = True) -> list[dict]:
     sql = """
-    SELECT p.ts_code, p.shares, p.avg_cost, p.last_update,
+    SELECT p.ts_code, p.shares, p.avg_cost, p.last_update, p.opening_date,
            i.name AS inst_name, i.category_id, i.type AS inst_type, i.active,
            c.name AS cat_name, c.sub_name AS cat_sub
     FROM position p
@@ -19,16 +19,17 @@ def list_positions_raw(include_zero: bool = True) -> list[dict]:
         rows = conn.execute(sql).fetchall()
         return [dict(r) for r in rows]
 
-def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str, log: LogContext):
+def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str, log: LogContext, opening_date: Optional[str] = None):
+    od = opening_date or date  # 默认与最后更新一致
     with get_conn() as conn:
-        before = conn.execute("SELECT ts_code, shares, avg_cost FROM position WHERE ts_code=?", (ts_code,)).fetchone()
+        before = conn.execute("SELECT ts_code, shares, avg_cost, opening_date FROM position WHERE ts_code=?", (ts_code,)).fetchone()
         if before: before = dict(before)
         conn.execute(
-            "INSERT OR REPLACE INTO position(ts_code, shares, avg_cost, last_update) VALUES(?,?,?,?)",
-            (ts_code, float(shares), float(avg_cost), date)
+            "INSERT OR REPLACE INTO position(ts_code, shares, avg_cost, last_update, opening_date) VALUES(?,?,?,?,?)",
+            (ts_code, float(shares), float(avg_cost), date, od)
         )
         conn.commit()
-        after = conn.execute("SELECT ts_code, shares, avg_cost, last_update FROM position WHERE ts_code=?", (ts_code,)).fetchone()
+        after = conn.execute("SELECT ts_code, shares, avg_cost, last_update, opening_date FROM position WHERE ts_code=?", (ts_code,)).fetchone()
         after = dict(after) if after else None
     log.set_entity("POSITION", ts_code); 
     log.set_before(before); 

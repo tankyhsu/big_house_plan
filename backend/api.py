@@ -23,6 +23,7 @@ from .services.txn_svc import create_txn, list_txn, bulk_txn
 from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
 from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal
+from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
 
 from threading import Thread
 from datetime import datetime
@@ -521,3 +522,22 @@ def api_logs_search(
     """
     total, items = search_logs(query, action, ts_from, ts_to, page, size)
     return {"total": total, "items": items}
+
+# =============================================================================
+# 八、分析 / 指标（只读）
+# =============================================================================
+@app.get("/api/position/irr")
+def api_position_irr(ts_code: str = Query(...), date: str = Query(..., pattern=r"^\d{8}$")):
+    """单标的 XIRR（资金加权年化收益，自建仓至指定日期）"""
+    try:
+        return compute_position_xirr(ts_code, date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/position/irr/batch")
+def api_position_irr_batch(date: str = Query(..., pattern=r"^\d{8}$")):
+    """批量 XIRR：对有持仓或有交易记录的标的计算"""
+    try:
+        return compute_position_xirr_batch(date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
