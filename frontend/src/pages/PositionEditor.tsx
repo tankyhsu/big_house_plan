@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert, Switch, Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Tooltip } from "antd";
+import { Tooltip, Tag  } from "antd";
 import { fetchIrrBatch } from "../api/hooks";
 import dayjs from "dayjs";
 import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
@@ -62,8 +62,8 @@ export default function PositionEditor() {
     form.setFieldsValue({
       shares: r.shares,
       avg_cost: r.avg_cost,
-      // 若有 last_update 则用它，否则默认今天
       date: r.last_update ? dayjs(r.last_update) : dayjs(),
+      opening_date_edit: r.opening_date ? dayjs(r.opening_date): dayjs(),
     });
     setEditKey(r.ts_code);
   };
@@ -80,11 +80,12 @@ export default function PositionEditor() {
         avg_cost: typeof vals.avg_cost === "number" ? vals.avg_cost : undefined,
         date: effDate,
       });
+
       message.success(`已更新（生效日：${effDate}）`);
       setEditKey(null);
       load();
     } catch (e: any) {
-      if (e?.errorFields) return; // 表单校验错误
+      if (e?.errorFields) return;
       message.error(e.message || "更新失败");
     }
   };
@@ -185,14 +186,16 @@ export default function PositionEditor() {
     }
   };
 
-  const [irrMap, setIrrMap] = useState<Record<string, number | null>>({});
+  const [irrMap, setIrrMap] = useState<Record<string, { val: number | null; reason?: string }>>({});
 
     // 页面打开时批量拉一次（以今天为估值日；也可以用你页面上的“查看日期”）
   useEffect(() => {
     const ymd = dayjs().format("YYYYMMDD");
     fetchIrrBatch(ymd).then(rows => {
-      const m: Record<string, number | null> = {};
-      rows.forEach(r => { m[r.ts_code] = r.annualized_mwr; });
+      const m: Record<string, { val: number | null; reason?: string }> = {};
+      rows.forEach(r => {
+        m[r.ts_code] = { val: r.annualized_mwr, reason: r.irr_reason || undefined };
+      });
       setIrrMap(m);
     }).catch(()=>{});
   }, []);
@@ -287,7 +290,7 @@ export default function PositionEditor() {
       render: (_: any, record) =>
         isEditing(record) ? (
           <Form.Item
-            name="date"
+            name="opening_date_edit"
             style={{ margin: 0 }}
             rules={[{ required: true, message: "请选择建仓日期" }]}
           >
@@ -305,13 +308,22 @@ export default function PositionEditor() {
       title: "年化收益（自建仓）",
       dataIndex: "irr",
       align: "right",
-      width: 80,
+      width: 180,
       render: (_: any, r: PositionRaw) => {
-        const irr = irrMap[r.ts_code];
+        const item = irrMap[r.ts_code];
+        const irr = item?.val;
+        const reason = item?.reason;
         return (
-          <Tooltip title="资金加权收益率（XIRR），考虑加/减仓与分红；以今天为估值日">
+          <>
             {typeof irr === "number" ? `${(irr * 100).toFixed(2)}%` : "—"}
-          </Tooltip>
+            {reason === "fallback_opening_date" && (
+              <Tooltip
+                title="近似估算：无交易流水，按“建仓日→估值日”和当前收益率推算年化（非资金加权 IRR）。"
+              >
+                <sup style={{ marginLeft: 2, color: "#ff3c00ff", cursor: "help" }}>*</sup>
+              </Tooltip>
+            )}
+          </>
         );
       },
     },

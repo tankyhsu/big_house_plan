@@ -81,6 +81,7 @@ export async function createInstrument(payload: { ts_code: string; name: string;
   return data;
 }
 
+// 补充后端返回的原因字段
 export type IrrRow = {
   ts_code: string;
   date: string;                  // YYYY-MM-DD
@@ -88,6 +89,7 @@ export type IrrRow = {
   flows: number;
   used_price_date?: string | null;
   terminal_value?: number | null;
+  irr_reason?: string | null;    // NEW: "ok" | "no_solution" | "fallback_opening_date" | ...
 };
 
 export async function fetchIrr(ts_code: string, ymd: string) {
