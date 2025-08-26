@@ -62,14 +62,12 @@ export async function fetchTxnList(page = 1, size = 20): Promise<{ total: number
   return data;
 }
 
-import type { InstrumentLite } from "./types";
+import type { CategoryLite, InstrumentLite } from "./types";
 
 export async function fetchInstruments(q?: string): Promise<InstrumentLite[]> {
   const { data } = await client.get("/api/instrument/list", { params: { q } });
   return data;
 }
-
-import type { CategoryLite, InstrumentLite } from "./types";
 
 export async function fetchCategories(): Promise<CategoryLite[]> {
   const { data } = await client.get("/api/category/list");
@@ -100,4 +98,19 @@ export async function fetchIrr(ts_code: string, ymd: string) {
 export async function fetchIrrBatch(ymd: string) {
   const { data } = await client.get("/api/position/irr/batch", { params: { date: ymd, nocache: Date.now() } });
   return data as IrrRow[];
+}
+
+export async function fetchSettings() {
+  const { data } = await client.get("/api/settings/get", { params: { nocache: Date.now() } });
+  return data as {
+    unit_amount: number;
+    stop_gain_pct: number;
+    overweight_band: number;
+    // ... 其它配置字段
+  };
+}
+
+export async function updateSettings(updates: Record<string, any>, recalcToday: boolean = true) {
+  const { data } = await client.post("/api/settings/update", { updates, recalc_today: recalcToday });
+  return data as { message: string; updated: string[] };
 }

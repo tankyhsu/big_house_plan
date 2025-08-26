@@ -3,18 +3,41 @@ from ..db import get_conn
 from ..logs import LogContext
 from .utils import to_float_safe
 
+DEFAULTS = {
+    "unit_amount": "3000",
+    "stop_gain_pct": "0.30",
+    "overweight_band": "0.20",
+    "ma_short": "20",
+    "ma_long": "60",
+    "ma_risk": "200",
+    "tushare_token": "",   # 如果需要，可以留空
+}
+
+def ensure_default_config():
+    """确保关键配置存在（不覆盖已有值）"""
+    with get_conn() as conn:
+        for k, v in DEFAULTS.items():
+            conn.execute(
+                "INSERT INTO config(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO NOTHING",
+                (k, v),
+            )
+        conn.commit()
+
 def get_config() -> dict:
     with get_conn() as conn:
-        rows = conn.execute("SELECT key,value FROM config").fetchall()
-        cfg = {r["key"]: r["value"] for r in rows}
+        rows = conn.execute("SELECT key, value FROM config").fetchall()
+    cfg = {r["key"]: r["value"] for r in rows}
+
+    # 转换为正确类型 & 默认兜底
     out = {
-        "unit_amount": to_float_safe(cfg.get("unit_amount"), 3000.0),
-        "stop_gain_pct": to_float_safe(cfg.get("stop_gain_pct"), 0.30),
-        "overweight_band": to_float_safe(cfg.get("overweight_band"), 0.20),
-        "ma_short": int(to_float_safe(cfg.get("ma_short"), 20) or 20),
-        "ma_long": int(to_float_safe(cfg.get("ma_long"), 60) or 60),
-        "ma_risk": int(to_float_safe(cfg.get("ma_risk"), 200) or 200),
-        "tushare_token": cfg.get("tushare_token"),
+        "unit_amount": int(cfg.get("unit_amount", DEFAULTS["unit_amount"])),
+        "stop_gain_pct": float(cfg.get("stop_gain_pct", DEFAULTS["stop_gain_pct"])),
+        "overweight_band": float(cfg.get("overweight_band", DEFAULTS["overweight_band"])),
+        "ma_short": int(cfg.get("ma_short", DEFAULTS["ma_short"])),
+        "ma_long": int(cfg.get("ma_long", DEFAULTS["ma_long"])),
+        "ma_risk": int(cfg.get("ma_risk", DEFAULTS["ma_risk"])),
+        "tushare_token": cfg.get("tushare_token", DEFAULTS["tushare_token"]),
     }
     return out
 

@@ -50,7 +50,6 @@ scripts\dev-fast.ps1
 ├── frontend/               # 前端 React + Vite + TypeScript
 │   └── src/...
 ├── requirements.txt        # 后端依赖
-├── config.yaml             # 运行配置（首次可由脚本生成）
 ├── scripts/
 │   ├── dev.sh              # 一键启动（macOS/Linux）
 │   ├── dev.ps1             # 一键启动（Windows）

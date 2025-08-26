@@ -24,6 +24,7 @@ from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
 from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal
 from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
+from .services.config_svc import ensure_default_config
 
 from threading import Thread
 from datetime import datetime
@@ -47,6 +48,7 @@ app.add_middleware(
 def on_startup():
     """启动时确保日志/表结构，并后台同步一次“今天”的价格（无 token 将跳过而不报错）"""
     ensure_log_schema()
+    ensure_default_config()
 
     def _sync_once():
         try:
@@ -130,23 +132,25 @@ def api_settings_get():
         out["tushare_token"] = "***masked***"
     return out
 
+class SettingsUpdateBody(BaseModel):
+    updates: dict
+    recalc_today: bool | None = True  # 默认更新即重算今天
+
 @app.post("/api/settings/update")
-def api_settings_update(body: SettingsUpdate):
-    """
-    更新配置（支持部分字段）。
-    若指定 recalc_date（YYYYMMDD），保存后会对该日自动重算。
-    """
-    log = LogContext("UPDATE_CONFIG")
+def api_settings_update(body: SettingsUpdateBody):
+    log = LogContext("SETTINGS_UPDATE").set_payload(body.dict())
     try:
-        upd = {k: v for k, v in body.dict().items() if v is not None and k != "recalc_date"}
-        updated = update_config(upd, log)
-        if body.recalc_date:
-            calc(body.recalc_date, LogContext("CALC_AFTER_SETTINGS_UPDATE"))
+        updated_keys = update_config(body.updates, log)
+        # 若 unit_amount 变更，建议重算当天（也可前端传 false 关闭）
+        if body.recalc_today and ("unit_amount" in updated_keys):
+            from datetime import datetime
+            today = datetime.now().strftime("%Y%m%d")
+            calc(today, LogContext("CALC_AFTER_UNIT_AMOUNT_UPDATE"))
         log.write("OK")
-        return {"message": "ok", "updated": updated}
+        return {"message": "ok", "updated": updated_keys}
     except Exception as e:
         log.write("ERROR", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # =============================================================================

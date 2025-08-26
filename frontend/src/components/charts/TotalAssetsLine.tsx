@@ -139,7 +139,7 @@ export default function TotalAssetsLine() {
         },
       ],
       // 如需拖拽缩放，可以打开 dataZoom
-      // dataZoom: [{ type: "inside" }, { type: "slider" }],
+      dataZoom: [{ type: "inside" }, { type: "slider" }],
     };
   }, [series]);
 

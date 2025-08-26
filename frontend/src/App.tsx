@@ -5,6 +5,8 @@ import Dashboard from "./pages/Dashboard";
 import PositionEditor from "./pages/PositionEditor";
 import TxnPage from "./pages/Txn";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
+import SettingsPage from "./pages/Settings";
+import { SettingOutlined } from "@ant-design/icons";
 
 const { Header, Content, Footer } = Layout;
 
@@ -13,6 +15,7 @@ function TopNav() {
   const selectedKeys =
     location.pathname.startsWith("/positions") ? ["positions"] :
     location.pathname.startsWith("/txn") ? ["txn"] :
+    location.pathname.startsWith("/settings") ? ["settings"] :
     ["dashboard"];
 
   return (
@@ -26,6 +29,7 @@ function TopNav() {
           { key: "dashboard", label: <Link to="/">Dashboard</Link> },
           { key: "positions", label: <Link to="/positions">持仓编辑</Link> },
           { key: "txn", label: <Link to="/txn">交易记录</Link> },
+          { key: "settings", icon: <SettingOutlined />, label:  <Link to="/settings">系统设置</Link> }
         ]}
         style={{ flex: 1, minWidth: 0 }}
       />
@@ -44,6 +48,7 @@ export default function App() {
             <Route path="/positions" element={<PositionEditor />} />
             <Route path="/txn" element={<TxnPage />} />
             <Route path="*" element={<Dashboard />} />
+            <Route path="/settings" element={<SettingsPage />} />  
           </Routes>
         </Content>
         <Footer style={{ textAlign: "center", color: "#98A2B3" }}>

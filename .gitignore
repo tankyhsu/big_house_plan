@@ -48,6 +48,5 @@ Thumbs.db
 # ---- Environment / Config ----
 .env
 *.local
-config.yaml
 portfolio.db*
 IMPLEMENTATION_PLAN.md
