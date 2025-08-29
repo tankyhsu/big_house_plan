@@ -27,6 +27,7 @@ from .services.analytics_svc import compute_position_xirr, compute_position_xirr
 from .db import get_conn
 from .repository.instrument_repo import set_active as repo_set_active
 from .services.config_svc import ensure_default_config
+from .providers.tushare_provider import TuShareProvider
 
 from threading import Thread
 from datetime import datetime
@@ -378,6 +379,7 @@ class PositionUpdateBody(BaseModel):
     shares: float | None = None
     avg_cost: float | None = None
     date: str  # YYYY-MM-DD
+    opening_date: Optional[str] = None  # YYYY-MM-DD，可选
 
 @app.get("/api/position/raw")
 def api_position_raw(include_zero: bool = Query(True, description="是否包含 shares<=0 的持仓")):
@@ -411,7 +413,7 @@ def api_position_update(body: PositionUpdateBody):
     log = LogContext("UPDATE_POSITION")
     log.set_payload(body.dict())
     try:
-        out = update_position_one(body.ts_code, body.shares, body.avg_cost, body.date, log)
+        out = update_position_one(body.ts_code, body.shares, body.avg_cost, body.date, log, opening_date=body.opening_date)
         date_yyyymmdd = body.date.replace("-", "")
         calc(date_yyyymmdd, LogContext("CALC_AFTER_POSITION_UPDATE"))
         log.write("OK")

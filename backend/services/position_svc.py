@@ -24,22 +24,24 @@ def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str
     log.set_after(after)
     return after
 
-def update_position_one(ts_code: str, shares: float|None, avg_cost: float|None, date: str, log: LogContext):
+def update_position_one(ts_code: str, shares: float|None, avg_cost: float|None, date: str, log: LogContext, opening_date: str | None = None):
     with get_conn() as conn:
-        before = conn.execute("SELECT ts_code, shares, avg_cost FROM position WHERE ts_code=?", (ts_code,)).fetchone()
+        before = conn.execute("SELECT ts_code, shares, avg_cost, opening_date FROM position WHERE ts_code=?", (ts_code,)).fetchone()
         if before: before = dict(before)
         if shares is None and avg_cost is None:
             raise ValueError("at least one of shares/avg_cost must be provided")
         if shares is not None and shares < 0:
             raise ValueError("shares cannot be negative")
         if before is None:
-            position_repo.upsert_position(conn, ts_code, float(shares or 0.0), float(avg_cost or 0.0), date)
+            od = opening_date or date
+            position_repo.upsert_position_with_opening(conn, ts_code, float(shares or 0.0), float(avg_cost or 0.0), date, od)
         else:
             new_shares = float(shares if shares is not None else before["shares"])
             new_cost = float(avg_cost if avg_cost is not None else before["avg_cost"])
-            position_repo.upsert_position(conn, ts_code, new_shares, new_cost, date)
+            od = opening_date if opening_date is not None else before.get("opening_date") or date
+            position_repo.upsert_position_with_opening(conn, ts_code, new_shares, new_cost, date, od)
         conn.commit()
-        after = conn.execute("SELECT ts_code, shares, avg_cost, last_update FROM position WHERE ts_code=?", (ts_code,)).fetchone()
+        after = conn.execute("SELECT ts_code, shares, avg_cost, last_update, opening_date FROM position WHERE ts_code=?", (ts_code,)).fetchone()
         after = dict(after) if after else None
     log.set_entity("POSITION", ts_code); log.set_before(before); log.set_after(after)
     return after

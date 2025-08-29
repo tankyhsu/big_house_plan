@@ -92,6 +92,8 @@ def main():
     parser.add_argument("--dry-run", help="只打印计划，不实际执行", action="store_true")
     parser.add_argument("--sleep-ms", type=int, default=100, help="每日日志之间的间隔毫秒（可用于限速）")
     parser.add_argument("--fund-rate-per-min", type=int, default=80, help="TuShare 基金相关接口限流（每分钟最大调用数，0=不限制）")
+    # 按类型过滤：stock/etf/fund（可多次或逗号分隔）
+    parser.add_argument("--bucket", action="append", help="按类型过滤：stock/etf/fund，可多次或逗号分隔")
     args = parser.parse_args()
 
     today = datetime.now().strftime("%Y%m%d")
@@ -128,6 +130,35 @@ def main():
         else:
             print("[backfill] no tushare_token in config; will skip price sync and only calc")
 
+    # 类型过滤映射为 ts_codes（若提供）
+    filtered_codes = None
+    if args.bucket:
+        buckets: set[str] = set()
+        for b in args.bucket:
+            for part in str(b).split(','):
+                part = (part or '').strip().lower()
+                if part in {"stock", "etf", "fund"}:
+                    buckets.add(part.upper())
+                elif part:
+                    print(f"[backfill] skip invalid bucket: {part}")
+        if buckets:
+            with get_conn() as conn:
+                rows = conn.execute("SELECT ts_code, COALESCE(type,'') AS t, active FROM instrument").fetchall()
+                codes = []
+                for r in rows:
+                    t = (r['t'] or '').upper()
+                    if t == 'CASH':
+                        continue
+                    bt = 'STOCK'
+                    if t == 'ETF' or 'ETF' in t:
+                        bt = 'ETF'
+                    elif t in ('FUND','FUND_OPEN','MUTUAL'):
+                        bt = 'FUND'
+                    if bt in buckets and int(r['active']) == 1:
+                        codes.append(r['ts_code'])
+                filtered_codes = sorted(set(codes))
+                print(f"[backfill] bucket filter {sorted(buckets)} -> codes={len(filtered_codes)}")
+
     total = 0
     for ymd in yyyymmdd_iter(start, end):
         dash_date = yyyyMMdd_to_dash(ymd)
@@ -135,7 +166,7 @@ def main():
         try:
             if args.sync and provider is not None:
                 log_sync = LogContext("BACKFILL_SYNC")
-                res = orch_sync(ymd, provider, log_sync)
+                res = orch_sync(ymd, provider, log_sync, ts_codes=filtered_codes)
                 print(f"[backfill] sync(orch) result: {res}")
             log_calc = LogContext("BACKFILL_CALC")
             calc(ymd, log_calc)

@@ -10,14 +10,15 @@ import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories,
 export default function PositionEditor() {
   const [data, setData] = useState<PositionRaw[]>([]);
   const [loading, setLoading] = useState(false);
-  const [editKey, setEditKey] = useState<string | null>(null);
-  const [form] = Form.useForm();
+  // 行内编辑已移除，统一使用弹窗编辑
 
   // 控制显示 0 仓位
   const [includeZero, setIncludeZero] = useState(true);
 
   // 新增持仓 Modal
   const [createOpen, setCreateOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [editingRowModal, setEditingRowModal] = useState<PositionRaw | null>(null);
   const [createForm] = Form.useForm();
 
   // 标的 & 类别（用于登记新标的/下拉选择）
@@ -52,43 +53,8 @@ export default function PositionEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [includeZero]);
 
-  const isEditing = (r: PositionRaw) => editKey === r.ts_code;
-
-// 1) 顶部 state：删除全局 date
-// const [date, setDate] = useState(dayjs());   // <- 移除
-
-  // 2) 编辑进入时，预填表单含 date
-  const edit = (r: PositionRaw) => {
-    form.setFieldsValue({
-      shares: r.shares,
-      avg_cost: r.avg_cost,
-      date: r.last_update ? dayjs(r.last_update) : dayjs(),
-      opening_date_edit: r.opening_date ? dayjs(r.opening_date): dayjs(),
-    });
-    setEditKey(r.ts_code);
-  };
-
-  const cancel = () => setEditKey(null);
-
-  const save = async (r: PositionRaw) => {
-    try {
-      const vals = await form.validateFields();
-      const effDate = vals.date ? vals.date.format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD");
-      await updatePositionOne({
-        ts_code: r.ts_code,
-        shares: typeof vals.shares === "number" ? vals.shares : undefined,
-        avg_cost: typeof vals.avg_cost === "number" ? vals.avg_cost : undefined,
-        date: effDate,
-      });
-
-      message.success(`已更新（生效日：${effDate}）`);
-      setEditKey(null);
-      load();
-    } catch (e: any) {
-      if (e?.errorFields) return;
-      message.error(e.message || "更新失败");
-    }
-  };
+  // 1) 顶部 state：删除全局 date（保留为注释）
+  // const [date, setDate] = useState(dayjs());
 
   // ====== 新增持仓（含登记新标的）原有逻辑（略） ======
   // === 下拉选项：将 instrument 列表映射为 AutoComplete options ===
@@ -162,12 +128,40 @@ export default function PositionEditor() {
     }
   };
 
+  // 通过弹窗编辑已有持仓
+  const onUpdateExistingModal = async () => {
+    try {
+      const vals = await createForm.validateFields();
+      const ts_code: string = (typeof vals.ts_code === 'string' ? vals.ts_code : vals.ts_code?.value)?.trim();
+      if (!ts_code) throw new Error('缺少 ts_code');
+      await updatePositionOne({
+        ts_code,
+        shares: Number(vals.shares),
+        avg_cost: Number(vals.avg_cost),
+        date: vals.date.format('YYYY-MM-DD'),
+        opening_date: vals.opening_date_edit ? vals.opening_date_edit.format('YYYY-MM-DD') : undefined,
+      });
+      message.success('已更新持仓');
+      setCreateOpen(false);
+      setEditingRowModal(null);
+      createForm.resetFields();
+      load();
+    } catch (e: any) {
+      if (e?.errorFields) return;
+      message.error(e.message || '更新失败');
+    }
+  };
+
   // 新代码时：自动从 TuShare 查询基础信息与建仓日的价格/净值（如提供）
+  const [refPriceDate, setRefPriceDate] = useState<string | null>(null);
+  const TS_CODE_RE = /^[0-9A-Za-z.\-]+$/;
   useEffect(() => {
     const tsVal = createForm.getFieldValue("ts_code");
     const code: string | undefined = (typeof tsVal === "string" ? tsVal : tsVal?.value)?.trim();
     if (!code) return;
     if (!isNewInstrument()) return; // 仅新代码时触发
+    // 代码不符合正则时，不触发 TuShare 查询，避免无效请求
+    if (!TS_CODE_RE.test(code)) { setRefPriceDate(null); return; }
     const dt = createForm.getFieldValue("date");
     const ymd: string | undefined = dt ? dt.format("YYYYMMDD") : undefined;
     lookupInstrument(code, ymd).then(info => {
@@ -177,10 +171,12 @@ export default function PositionEditor() {
       if (info?.type && !createForm.getFieldValue("inst_type")) {
         createForm.setFieldsValue({ inst_type: info.type });
       }
-      if (info?.price?.close && !createForm.getFieldValue("avg_cost")) {
+      // 仅在用户未手动编辑过均价，且表单中当前未填值时，才回填参考价
+      if (info?.price?.close && !createForm.isFieldTouched("avg_cost") && !createForm.getFieldValue("avg_cost")) {
         createForm.setFieldsValue({ avg_cost: Number(info.price.close) });
       }
-    }).catch(() => {});
+      setRefPriceDate(info?.price?.trade_date || null);
+    }).catch(() => { setRefPriceDate(null); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createForm.getFieldValue("ts_code"), createForm.getFieldValue("date")]);
 
@@ -248,83 +244,25 @@ export default function PositionEditor() {
       title: "持仓份额",
       dataIndex: "shares",
       align: "right",
-      render: (_, record) =>
-        isEditing(record) ? (
-          <Form.Item
-            name="shares"
-            rules={[
-              { required: true, message: "请输入份额" },
-              { type: "number", min: 0, message: "份额必须 ≥ 0" },
-            ]}
-            style={{ margin: 0 }}
-          >
-            <InputNumber controls={false} precision={2} style={{ width: 120 }} />
-          </Form.Item>
-        ) : (
-          record.shares
-        ),
+      render: (_, record) => record.shares,
     },
     {
       title: "持仓均价",
       dataIndex: "avg_cost",
       align: "right",
-      render: (_, record) =>
-        isEditing(record) ? (
-          <Form.Item
-            name="avg_cost"
-            rules={[
-              { required: true, message: "请输入均价" },
-              { type: "number", min: 0, message: "均价必须 ≥ 0" },
-            ]}
-            style={{ margin: 0 }}
-          >
-            <InputNumber controls={false} precision={4} style={{ width: 120 }} />
-          </Form.Item>
-        ) : (
-          (record.avg_cost ?? 0).toFixed(4)
-        ),
+      render: (_, record) => (record.avg_cost ?? 0).toFixed(4),
     },
     {
       title: "最后更新",
       dataIndex: "last_update",
       width: 100,
-      render: (_: any, record) =>
-        isEditing(record) ? (
-          <Form.Item
-            name="date"
-            style={{ margin: 0 }}
-            rules={[{ required: true, message: "请选择生效日期" }]}
-          >
-            <DatePicker
-              allowClear={false}
-              // 可选：禁止选择未来日期
-              disabledDate={(d) => d && d.isAfter(dayjs(), "day")}
-            />
-          </Form.Item>
-        ) : (
-          record.last_update || "-"
-        ),
+      render: (_: any, record) => record.last_update || "-",
     },
     {
       title: "建仓时间",
       dataIndex: "opening_date",
       width: 100,
-      render: (_: any, record) =>
-        isEditing(record) ? (
-          <Form.Item
-            name="opening_date_edit"
-            style={{ margin: 0 }}
-            rules={[{ required: true, message: "请选择建仓日期" }]}
-          >
-            <DatePicker
-              allowClear={false}
-              // 可选：禁止选择未来日期
-              disabledDate={(d) => d && d.isAfter(dayjs(), "day")}
-            />
-          </Form.Item>
-        ) : (
-          record.opening_date || "-"
-        ),
+      render: (_: any, record) => record.opening_date || "-",
     },
     {
       title: "年化收益（自建仓）",
@@ -355,16 +293,25 @@ export default function PositionEditor() {
       align: "center",
       width: 180,
       render: (_: any, record) => {
-        const editable = isEditing(record);
         const isZero = Number(record.shares) === 0;
-        return editable ? (
+        return (
           <Space>
-            <Button type="primary" onClick={() => save(record)}>保存</Button>
-            <Button onClick={cancel}>取消</Button>
-          </Space>
-        ) : (
-          <Space>
-            <Button onClick={() => edit(record)}>编辑</Button>
+            <Button onClick={() => {
+              // 打开弹窗复用创建表单进行编辑
+              setModalMode('edit'); setCreateOpen(true); setEditingRowModal(record);
+              createForm.resetFields();
+              createForm.setFieldsValue({
+                ts_code: record.ts_code,
+                inst_name: record.inst_name || '',
+                shares: record.shares,
+                avg_cost: record.avg_cost,
+                date: record.last_update ? dayjs(record.last_update) : dayjs(),
+                opening_date_edit: record.opening_date ? dayjs(record.opening_date) : undefined,
+                inst_type: undefined,
+                inst_category_id: undefined,
+                inst_active: true,
+              });
+            }}>编辑</Button>
             {isZero && (
               <Popconfirm title="确定删除这条 0 仓位吗？" onConfirm={() => onDeleteZero(record.ts_code)}>
                 <Button danger>删除</Button>
@@ -398,29 +345,28 @@ export default function PositionEditor() {
         </Popconfirm>
       </Space>
 
-      <Form form={form} component={false}>
-        <Table
-          size="small"
-          rowKey={(r) => r.ts_code}
-          columns={columns}
-          dataSource={data}
-          loading={loading}
-          pagination={{ pageSize: 15 }}
-          locale={{
-            emptyText: (
-              <Empty description="暂无持仓数据" />
-            ),
-          }}
-        />
-      </Form>
+      <Table
+        size="small"
+        rowKey={(r) => r.ts_code}
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={{ pageSize: 15 }}
+        locale={{
+          emptyText: (
+            <Empty description="暂无持仓数据" />
+          ),
+        }}
+      />
 
       {/* 新增持仓 Modal（内置“登记新标的”区块） */}
       <Modal
-        title="新增持仓"
+        title={modalMode === 'create' ? "新增持仓" : "编辑持仓"}
         open={createOpen}
-        onOk={onCreate}
+        onOk={modalMode === 'create' ? onCreate : onUpdateExistingModal}
         onCancel={() => {
           setCreateOpen(false);
+          setEditingRowModal(null);
           createForm.resetFields();
         }}
         okText="保存"
@@ -445,6 +391,7 @@ export default function PositionEditor() {
               onSearch={onSearch}
               placeholder="例如 510300.SH 或 基金代码"
               allowClear
+              disabled={modalMode === 'edit'}
               notFoundContent={searching ? "搜索中..." : "可直接输入新代码"}
               filterOption={(inputValue, option) =>
                 (option?.value as string)?.toUpperCase().includes(inputValue.toUpperCase()) ||
@@ -453,8 +400,12 @@ export default function PositionEditor() {
             />
           </Form.Item>
 
-          {/* 当 ts_code 不在现有列表时，展示“登记新标的”扩展表单 */}
-          {isNewInstrument() && (
+          {/* 新增模式下才展示“登记新标的”扩展表单；编辑模式下显示名称只读 */}
+          {modalMode === 'edit' ? (
+            <Form.Item label="名称" name="inst_name">
+              <Input disabled />
+            </Form.Item>
+          ) : isNewInstrument() && (
             <>
               <Alert type="info" showIcon style={{ marginBottom: 8 }} message="检测到新代码，需先登记标的基础信息" />
               <Form.Item label="名称" name="inst_name" rules={[{ required: true, message: "请输入名称" }]}>
@@ -507,6 +458,11 @@ export default function PositionEditor() {
           >
             <InputNumber controls={false} precision={4} style={{ width: "100%" }} placeholder="如 4.5000" />
           </Form.Item>
+          {refPriceDate && (
+            <Typography.Text type="secondary" style={{ marginTop: -8, display: "block" }}>
+              参考价日期：{refPriceDate}
+            </Typography.Text>
+          )}
           <Form.Item label="生效日期" name="date" rules={[{ required: true }]}>
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>

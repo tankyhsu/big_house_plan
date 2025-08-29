@@ -55,7 +55,7 @@ export async function cleanupZeroPositions(recalcDate?: string) {
 }
 
 // 更新一条底仓
-export async function updatePositionOne(payload: { ts_code: string; shares?: number; avg_cost?: number; date: string; }) {
+export async function updatePositionOne(payload: { ts_code: string; shares?: number; avg_cost?: number; date: string; opening_date?: string; }) {
   const { data } = await client.post("/api/position/update", payload);
   return data;
 }

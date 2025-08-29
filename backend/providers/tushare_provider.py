@@ -40,11 +40,11 @@ class TuShareProvider:
         self._cache_fund_daily: Dict[Tuple[str, str, str], Any] = {}
         self._cache_fund_nav: Dict[Tuple[str, str, str], Any] = {}
 
-        def _retry_call(fn, *args, tries=3, base_sleep=0.5):
+        def _retry_call(fn, *args, tries=3, base_sleep=0.5, **kwargs):
             last_err = None
             for i in range(tries):
                 try:
-                    return fn(*args)
+                    return fn(*args, **kwargs)
                 except Exception as e:
                     last_err = e
                     delay = base_sleep * (2 ** i) * (1.0 + random.random() * 0.1)

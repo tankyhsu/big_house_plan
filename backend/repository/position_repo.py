@@ -15,6 +15,13 @@ def upsert_position(conn: Connection, ts_code: str, shares: float, avg_cost: flo
     )
 
 
+def upsert_position_with_opening(conn: Connection, ts_code: str, shares: float, avg_cost: float, last_update: str, opening_date: str):
+    conn.execute(
+        "INSERT OR REPLACE INTO position(ts_code, shares, avg_cost, last_update, opening_date) VALUES(?,?,?,?,?)",
+        (ts_code, float(shares), float(avg_cost), last_update, opening_date),
+    )
+
+
 def get_position_full(conn: Connection, ts_code: str):
     return conn.execute(
         "SELECT ts_code, shares, avg_cost, last_update, opening_date FROM position WHERE ts_code=?",
