@@ -2,6 +2,8 @@
 from ..db import get_conn
 from ..logs import LogContext
 from typing import Optional
+import pandas as pd
+from ..repository import instrument_repo
 
 def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: LogContext, sec_type: str | None = None):
     """创建/更新标的；sec_type 可为 STOCK | FUND | CASH 。None 时不覆盖既有值。"""
@@ -12,43 +14,24 @@ def create_instrument(ts_code: str, name: str, category_id: int, active: bool, l
         return "STOCK"  # 兜底：无法判断时默认 STOCK
 
     with get_conn() as conn:
-        old = conn.execute("SELECT type FROM instrument WHERE ts_code=?", (ts_code,)).fetchone()
-        final_type = _norm_type(sec_type or (old["type"] if old and old["type"] else None))
-        conn.execute(
-            "INSERT OR REPLACE INTO instrument(ts_code, name, type, category_id, active) VALUES(?,?,?,?,?)",
-            (ts_code, name, final_type, int(category_id), 1 if active else 0)
-        )
+        old_t = instrument_repo.get_type(conn, ts_code)
+        final_type = _norm_type(sec_type or (old_t if old_t else None))
+        instrument_repo.upsert_instrument(conn, ts_code, name, final_type, int(category_id), bool(active))
         conn.commit()
     log.set_entity("INSTRUMENT", ts_code)
     log.set_after({"ts_code": ts_code, "name": name, "category_id": category_id, "active": active, "type": final_type})
 
 # ===== Instrument List (for autocomplete) =====
 def list_instruments(q: Optional[str] = None, active_only: bool = True) -> list[dict]:
-    sql = """
-    SELECT i.ts_code, i.name, i.active, i.category_id, i.type,
-           c.name AS cat_name, c.sub_name AS cat_sub
-    FROM instrument i
-    LEFT JOIN category c ON c.id = i.category_id
-    """
-    where = []
-    params = {}
-    if active_only:
-        where.append("i.active = 1")
-    if q:
-        where.append("(i.ts_code LIKE :q OR i.name LIKE :q)")
-        params["q"] = f"%{q}%"
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY c.name, c.sub_name, i.ts_code"
     with get_conn() as conn:
-        rows = conn.execute(sql, params).fetchall()
+        rows = instrument_repo.list_instruments(conn, q, active_only)
         return [dict(r) for r in rows]
 
 
 def seed_load(categories_csv: str, instruments_csv: str, log: LogContext) -> dict:
     """从 CSV 导入类别与标的映射；CSV 要含必要列：
        categories.csv: name, sub_name, target_units
-       instruments.csv: ts_code, name, category_name, category_sub_name, active(0/1)
+       instruments.csv: ts_code, name, type, currency, category_name, category_sub_name, active(0/1)
        如果 instrument 指定的分类不存在，则自动创建。
     """
     cat_df = pd.read_csv(categories_csv)
@@ -82,6 +65,8 @@ def seed_load(categories_csv: str, instruments_csv: str, log: LogContext) -> dic
         for _, r in ins_df.iterrows():
             ts = str(r["ts_code"]).strip()
             nm = str(r["name"]).strip()
+            tp_raw = str(r.get("type", "")).strip().upper()
+            tp = "ETF" if tp_raw == "ETF" else ("CASH" if tp_raw == "CASH" else ("FUND" if tp_raw == "FUND" else "STOCK"))
             cn = str(r["category_name"]).strip()
             cs = str(r.get("category_sub_name", "")).strip()
             active = int(r.get("active", 1))
@@ -96,10 +81,7 @@ def seed_load(categories_csv: str, instruments_csv: str, log: LogContext) -> dic
                 cat_id = cur.lastrowid
                 cat_map[(cn, cs)] = cat_id
                 created_cat += 1
-            conn.execute(
-                "INSERT OR REPLACE INTO instrument(ts_code, name, category_id, active) VALUES(?,?,?,?)",
-                (ts, nm, int(cat_id), 1 if active else 0)
-            )
+            instrument_repo.upsert_instrument(conn, ts, nm, tp, int(cat_id), bool(active))
             created_ins += 1
         conn.commit()
 

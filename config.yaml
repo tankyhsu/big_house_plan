@@ -1,0 +1,4 @@
+# Application config
+# Production DB path (used when PORT_DB_PATH is not set)
+db_path: ./backend/data/portfolio.db
+test_db_path: ./backend/tests/.tmp/portfolio_test.db

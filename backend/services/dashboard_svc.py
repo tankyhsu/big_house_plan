@@ -1,6 +1,7 @@
 # backend/services/dashboard_svc.py
 import pandas as pd
 from ..db import get_conn
+from ..repository import reporting_repo
 from .utils import yyyyMMdd_to_dash
 from .config_svc import get_config
 # get_dashboard, list_category, list_position, list_signal 放这里（你已有的“动态口径”实现）
@@ -16,17 +17,7 @@ def get_dashboard(date_yyyymmdd: str) -> dict:
     d = yyyyMMdd_to_dash(date_yyyymmdd)
     with get_conn() as conn:
         # 动态聚合：每个标的取 ≤ d 最近价
-        rows = conn.execute("""
-            SELECT i.ts_code, i.category_id,
-                   IFNULL(p.shares,0) AS shares,
-                   IFNULL(p.avg_cost,0) AS avg_cost,
-                   (SELECT close FROM price_eod pe 
-                      WHERE pe.ts_code=i.ts_code AND pe.trade_date <= ?
-                      ORDER BY pe.trade_date DESC LIMIT 1) AS eod_close
-            FROM instrument i
-            LEFT JOIN position p ON p.ts_code=i.ts_code
-            WHERE i.active=1
-        """, (d,)).fetchall()
+        rows = reporting_repo.active_instruments_with_pos_and_price(conn, d)
 
         mv = 0.0; cost = 0.0; used_fallback = False
         for r in rows:
@@ -77,19 +68,8 @@ def list_category(date_yyyymmdd: str) -> list[dict]:
         cats = pd.read_sql_query("SELECT id AS category_id, name, sub_name, target_units FROM category", conn)
 
         # 拉标的 + 底仓 + 最近价
-        q = """
-        SELECT i.category_id, i.ts_code,
-               IFNULL(p.shares,0) AS shares,
-               IFNULL(p.avg_cost,0) AS avg_cost,
-               (SELECT close FROM price_eod pe 
-                  WHERE pe.ts_code=i.ts_code AND pe.trade_date <= ?
-                  ORDER BY pe.trade_date DESC LIMIT 1) AS eod_close
-        FROM instrument i
-        LEFT JOIN position p ON p.ts_code=i.ts_code
-        WHERE i.active=1
-        """
-
-        df = pd.read_sql_query(q, conn, params=(d,))
+        rows = reporting_repo.active_instruments_with_pos_and_price(conn, d)
+        df = pd.DataFrame([dict(r) for r in rows])
         # 价格回退：无价则用均价（仅用于展示口径）
         df["price"] = df["eod_close"].fillna(df["avg_cost"])
         df["market_value"] = df["shares"] * df["price"]

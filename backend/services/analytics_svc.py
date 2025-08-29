@@ -5,6 +5,7 @@ from datetime import datetime, date as dt_date
 from math import isfinite
 
 from ..db import get_conn
+from ..repository import txn_repo, position_repo, price_repo
 from .utils import yyyyMMdd_to_dash
 
 # analytics_svc.py 头部
@@ -78,15 +79,7 @@ def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> Tuple[List[Tuple[st
     terminal_value: Optional[float] = None
 
     with get_conn() as conn:
-        txns = conn.execute(
-            """
-            SELECT trade_date, action, shares, price, amount, fee
-            FROM txn
-            WHERE ts_code=? AND trade_date<=?
-            ORDER BY trade_date ASC, rowid ASC
-            """,
-            (ts_code, date_dash)
-        ).fetchall()
+        txns = txn_repo.list_txns_for_code_upto(conn, ts_code, date_dash)
         _alog(f"build_cfs: ts={ts_code} date={date_dash} txns={len(txns)}")
 
         for t in txns:
@@ -95,7 +88,7 @@ def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> Tuple[List[Tuple[st
             price  = None if t["price"] is None else float(t["price"])
             amount = None if t["amount"] is None else float(t["amount"])
             fee    = float(t["fee"] or 0.0)
-            d      = t["date"]  # 可能为 YYYY-MM-DD / YYYYMMDD
+            d      = t["trade_date"]  # YYYY-MM-DD
 
             if action == "BUY":
                 gross = amount if amount is not None else (shares * (price or 0.0))
@@ -111,17 +104,13 @@ def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> Tuple[List[Tuple[st
                 if amount:
                     cfs.append((d, float(amount)))
 
-        pos = conn.execute("SELECT shares FROM position WHERE ts_code=?", (ts_code,)).fetchone()
+        pos = position_repo.get_position(conn, ts_code)
         shares_now = float(pos["shares"] or 0.0) if pos else 0.0
         if shares_now > 0:
-            pe = conn.execute(
-                "SELECT close, trade_date FROM price_eod WHERE ts_code=? AND trade_date<=? ORDER BY trade_date DESC LIMIT 1",
-                (ts_code, date_dash)
-            ).fetchone()
-            if pe and pe["close"] is not None:
-                price = float(pe["close"])
-                terminal_value = shares_now * price
-                used_price_date = pe["trade_date"]  # YYYY-MM-DD
+            last = price_repo.get_last_close_on_or_before(conn, ts_code, date_dash)
+            if last is not None:
+                used_price_date, price = last[0], last[1]
+                terminal_value = shares_now * float(price)
                 cfs.append((date_dash, terminal_value))
         _alog(f"build_cfs: ts={ts_code} flows={len(cfs)} shares_now={shares_now} used_price_date={used_price_date} term={terminal_value}")
     return cfs, used_price_date, terminal_value
@@ -247,17 +236,43 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
 
 def compute_position_xirr_batch(date_yyyymmdd: str, ts_codes: Optional[List[str]] = None) -> List[Dict]:
     d = yyyyMMdd_to_dash(date_yyyymmdd)
+    from ..repository.txn_repo import list_txn_codes_distinct
+    from ..repository.position_repo import list_position_codes_with_shares
     with get_conn() as conn:
         if ts_codes:
             codes = ts_codes
         else:
-            codes1 = [r["ts_code"] for r in conn.execute("SELECT ts_code FROM position WHERE shares>0").fetchall()]
-            codes2 = [r["ts_code"] for r in conn.execute("SELECT DISTINCT ts_code FROM txn").fetchall()]
+            codes1 = list_position_codes_with_shares(conn)
+            codes2 = list_txn_codes_distinct(conn)
             codes = sorted(list(set(codes1 + codes2)))
 
-    _alog(f"compute_batch: date={d} codes={len(codes)}")
+    # 过滤：跳过现金类标的（instrument.type='CASH' 或与配置的 cash_ts_code 相同）
+    from .config_svc import get_config
+    cfg = get_config()
+    cash_code_cfg = (cfg.get("cash_ts_code") or "").upper()
+    cash_set = set()
+    with get_conn() as conn:
+        if codes:
+            q = "SELECT ts_code, COALESCE(type,'') AS t FROM instrument WHERE ts_code IN ({})".format(
+                ",".join(["?"]*len(codes))
+            )
+            for r in conn.execute(q, codes).fetchall():
+                t = (r["t"] or "").upper()
+                if t == "CASH" or r["ts_code"].upper() == cash_code_cfg:
+                    cash_set.add(r["ts_code"])
+
+    _alog(f"compute_batch: date={d} codes={len(codes)} skip_cash={len(cash_set)}")
     out: List[Dict] = []
     for code in codes:
+        if code in cash_set:
+            out.append({
+                "ts_code": code,
+                "date": d,
+                "annualized_mwr": None,
+                "flows": 0,
+                "irr_reason": "skip_cash"
+            })
+            continue
         try:
             out.append(compute_position_xirr(code, date_yyyymmdd))
         except Exception as e:

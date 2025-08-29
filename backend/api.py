@@ -25,6 +25,7 @@ from .services.calc_svc import calc
 from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal
 from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
 from .db import get_conn
+from .repository.instrument_repo import set_active as repo_set_active
 from .services.config_svc import ensure_default_config
 
 from threading import Thread
@@ -227,7 +228,7 @@ def api_instrument_update(body: InstrumentUpdate):
     log.set_payload(body.dict())
     try:
         with get_conn() as conn:
-            conn.execute("UPDATE instrument SET active=? WHERE ts_code=?", (1 if body.active else 0, body.ts_code))
+            repo_set_active(conn, body.ts_code, body.active)
             conn.commit()
         log.set_entity("INSTRUMENT", body.ts_code)
         log.write("OK")
@@ -562,13 +563,11 @@ def api_price_last(ts_code: str = Query(...), date: str | None = Query(None, pat
     try:
         d = date or datetime.now().strftime("%Y%m%d")
         dash = f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+        from .repository.price_repo import get_last_close_on_or_before
         with get_conn() as conn:
-            row = conn.execute(
-                "SELECT trade_date, close FROM price_eod WHERE ts_code=? AND trade_date<=? ORDER BY trade_date DESC LIMIT 1",
-                (ts_code, dash)
-            ).fetchone()
-        if not row:
+            last = get_last_close_on_or_before(conn, ts_code, dash)
+        if not last:
             return {"trade_date": None, "close": None}
-        return {"trade_date": row["trade_date"], "close": float(row["close"]) if row["close"] is not None else None}
+        return {"trade_date": last[0], "close": float(last[1])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
