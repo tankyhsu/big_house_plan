@@ -38,24 +38,34 @@ scripts\dev-fast.ps1
 
 ---
 
-## 目录结构
+## 🧭 目录结构
 
 ```
 .
-├── backend/                # 后端 FastAPI 源码
-│   ├── api.py
-│   ├── services.py
-│   ├── logs.py
-│   └── db.py
-├── frontend/               # 前端 React + Vite + TypeScript
-│   └── src/...
-├── requirements.txt        # 后端依赖
-├── scripts/
-│   ├── dev.sh              # 一键启动（macOS/Linux）
-│   ├── dev.ps1             # 一键启动（Windows）
-│   ├── dev-fast.sh         # 快速启动（macOS/Linux）
-│   └── dev-fast.ps1        # 快速启动（Windows）
-└── IMPLEMENTATION_PLAN.md
+├── backend/                # FastAPI 后端
+│   ├── api.py              # 路由 & 接口定义
+│   ├── services/           # 业务逻辑拆分（position, transaction, signal 等）
+│   ├── repository/         # DB 访问与持久化
+│   ├── analytics/          # 计算与分析逻辑
+│   ├── logs.py             # 日志统一入口
+│   └── db.py               # SQLite 连接与基础 CRUD
+├── frontend/               # React + Vite + TypeScript 前端
+│   ├── src/
+│   │   ├── pages/          # 页面：Dashboard, Position, Trade ...
+│   │   ├── components/     # 公共组件
+│   │   ├── services/       # 前端 API 调用
+│   │   └── ...
+│   └── vite.config.ts
+├── requirements.txt        # 后端依赖清单
+├── package.json            # 前端依赖清单
+├── scripts/                # 跨平台开发脚本
+│   ├── dev.sh
+│   ├── dev.ps1
+│   ├── dev-fast.sh
+│   └── dev-fast.ps1
+├── seeds/                  # 种子数据（CSV）
+├── IMPLEMENTATION_PLAN.md  # 实施/演进计划
+└── README.md
 ```
 
 ---

@@ -6,7 +6,7 @@ from .utils import yyyyMMdd_to_dash
 from .config_svc import get_config
 
 def calc(date_yyyymmdd: str, log: LogContext):
-    print("🚶‍♀️触发计算逻辑")
+    print("触发计算逻辑")
     d = yyyyMMdd_to_dash(date_yyyymmdd)
     cfg = get_config()
     unit_amount = float(cfg.get("unit_amount", 3000))
