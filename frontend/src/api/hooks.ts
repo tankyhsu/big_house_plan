@@ -69,6 +69,12 @@ export async function fetchInstruments(q?: string): Promise<InstrumentLite[]> {
   return data;
 }
 
+// 最近价格（单标的）
+export async function fetchLastPrice(ts_code: string, ymd?: string): Promise<{ trade_date: string | null; close: number | null; }> {
+  const { data } = await client.get("/api/price/last", { params: { ts_code, date: ymd } });
+  return data;
+}
+
 export async function fetchCategories(): Promise<CategoryLite[]> {
   const { data } = await client.get("/api/category/list");
   return data;

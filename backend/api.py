@@ -24,6 +24,7 @@ from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
 from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal
 from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
+from .db import get_conn
 from .services.config_svc import ensure_default_config
 
 from threading import Thread
@@ -543,5 +544,31 @@ def api_position_irr_batch(date: str = Query(..., pattern=r"^\d{8}$")):
     """批量 XIRR：对有持仓或有交易记录的标的计算"""
     try:
         return compute_position_xirr_batch(date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# 九、价格（只读）
+# =============================================================================
+@app.get("/api/price/last")
+def api_price_last(ts_code: str = Query(...), date: str | None = Query(None, pattern=r"^\d{8}$")):
+    """
+    返回指定标的在给定日期(YYYYMMDD)之前(含)的最近收盘价与对应日期。
+    若未传 date，则使用今天。
+    输出: { trade_date: YYYY-MM-DD | null, close: float | null }
+    """
+    from datetime import datetime
+    try:
+        d = date or datetime.now().strftime("%Y%m%d")
+        dash = f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT trade_date, close FROM price_eod WHERE ts_code=? AND trade_date<=? ORDER BY trade_date DESC LIMIT 1",
+                (ts_code, dash)
+            ).fetchone()
+        if not row:
+            return {"trade_date": None, "close": None}
+        return {"trade_date": row["trade_date"], "close": float(row["close"]) if row["close"] is not None else None}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

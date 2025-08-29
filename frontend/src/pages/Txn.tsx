@@ -3,7 +3,8 @@ import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, T
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite } from "../api/types";
-import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument } from "../api/hooks";
+import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice } from "../api/hooks";
+import type { PositionRaw } from "../api/types";
 
 const ACTIONS = ["BUY", "SELL", "DIV", "FEE", "ADJ"] as const;
 
@@ -30,6 +31,15 @@ export default function TxnPage() {
   // 暂存待提交的交易（当输入新代码时先存起来）
   const [pendingTxn, setPendingTxn] = useState<TxnCreate | null>(null);
 
+  // 当前持仓/价格信息（用于增强录单体验）
+  const [posRaw, setPosRaw] = useState<PositionRaw[]>([]);
+  const [curShares, setCurShares] = useState<number | null>(null);
+  const [curAvgCost, setCurAvgCost] = useState<number | null>(null);
+  const [lastClose, setLastClose] = useState<number | null>(null);
+  const [retPct, setRetPct] = useState<number | null>(null);
+  const [typeLocked, setTypeLocked] = useState<boolean>(false);
+  const [curName, setCurName] = useState<string | null>(null);
+
   const load = async (p = page, s = size) => {
     setLoading(true);
     try {
@@ -48,12 +58,87 @@ export default function TxnPage() {
     // 预加载：标的、类别
     fetchInstruments().then(setInstOpts).catch(()=>{});
     fetchCategories().then(setCategories).catch(()=>{});
+    fetchPositionRaw(true).then(setPosRaw).catch(()=>{});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 当选择 ts_code 或日期/动作变化时，刷新持仓/价格提示与快捷按钮
+  const refreshContextInfo = async () => {
+    const vals = form.getFieldsValue();
+    const tsCode: string | undefined = (typeof vals.ts_code === "string" ? vals.ts_code : vals.ts_code?.value)?.trim();
+    if (!tsCode) { setCurShares(null); setCurAvgCost(null); setLastClose(null); setRetPct(null); return; }
+    // 是否已有标的（用于锁定类型）
+    const inst = instOpts.find(i => i.ts_code === tsCode);
+    if (inst) {
+      setCurName(inst.name || null);
+      const t = (inst.type || "").toString().toUpperCase();
+      if (t) {
+        setTypeLocked(true);
+        if (form.getFieldValue("type") !== t) form.setFieldsValue({ type: t });
+      } else {
+        setTypeLocked(false);
+      }
+    } else {
+      setTypeLocked(false);
+      setCurName(null);
+    }
+    // 持仓
+    const pr = posRaw.find(p => p.ts_code === tsCode);
+    const shares = pr ? Number(pr.shares || 0) : 0;
+    const avg = pr ? (typeof pr.avg_cost === "number" ? pr.avg_cost : null) : null;
+    setCurShares(shares);
+    setCurAvgCost(avg);
+    // 价格：以选择的交易日或今天为准
+    const ymd: string = (vals.date ? vals.date.format("YYYYMMDD") : dayjs().format("YYYYMMDD"));
+    try {
+      const lp = await fetchLastPrice(tsCode, ymd);
+      const close = (typeof lp.close === "number") ? lp.close : null;
+      setLastClose(close);
+      if (close != null && avg != null && shares > 0) {
+        setRetPct((close - avg) / avg);
+      } else {
+        setRetPct(null);
+      }
+      // 卖出时自动填充最新价
+      if (vals.action === "SELL" && close != null) {
+        form.setFieldsValue({ price: Number(close) });
+      }
+    } catch {
+      setLastClose(null); setRetPct(null);
+    }
+    // 若为 SELL 且有持仓，自动带出全仓数量
+    if (shares > 0 && vals.action === "SELL") {
+      form.setFieldsValue({ shares: Number(shares.toFixed(6)) });
+    }
+  };
+
+  // 监听 ts_code / date / action 变化
+  const watchTsCode = Form.useWatch("ts_code", form);
+  const watchDate = Form.useWatch("date", form);
+  const watchAction = Form.useWatch("action", form);
+  const watchShares = Form.useWatch("shares", form);
+  const watchPrice = Form.useWatch("price", form);
+  const watchFee = Form.useWatch("fee", form);
+  useEffect(() => { 
+    refreshContextInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchTsCode, watchDate, watchAction, posRaw]);
+
+  // 计算本次卖出收益（只在 SELL 下显示）；= shares * (price - avg_cost) - fee
+  const tradePnl = useMemo(() => {
+    if (watchAction !== "SELL") return null;
+    const s = Number(watchShares || 0);
+    const p = typeof watchPrice === "number" ? watchPrice : (watchPrice ? Number(watchPrice) : NaN);
+    const f = Number(watchFee || 0);
+    if (!curAvgCost && curAvgCost !== 0) return null;
+    if (!s || !p || Number.isNaN(p)) return null;
+    return s * (p - (curAvgCost as number)) - f;
+  }, [watchAction, watchShares, watchPrice, watchFee, curAvgCost]);
 
   const columns: ColumnsType<TxnItem> = [
     { title: "日期", dataIndex: "trade_date", width: 120 },
     { title: "代码", dataIndex: "ts_code", width: 140 },
+    { title: "名称", dataIndex: "name", width: 160, render: (v) => v || "-" },
     { title: "方向", dataIndex: "action", width: 90, render: (v) =>
         v === "BUY" ? <Tag color="green">BUY</Tag> :
         v === "SELL" ? <Tag color="red">SELL</Tag> : <Tag>{v}</Tag>
@@ -61,6 +146,15 @@ export default function TxnPage() {
     { title: "数量", dataIndex: "shares", align: "right", width: 100 },
     { title: "价格", dataIndex: "price", align: "right", width: 100, render: (v) => v == null ? "-" : v.toFixed(4) },
     { title: "费用", dataIndex: "fee", align: "right", width: 100, render: (v) => v == null ? "-" : v.toFixed(2) },
+    { title: "本次收益", dataIndex: "realized_pnl", align: "right", width: 120,
+      render: (v, row) => {
+        if (row.action !== "SELL" || v == null) return "-";
+        const n = Number(v);
+        const color = n > 0 ? "#cf1322" : (n < 0 ? "#096dd9" : undefined);
+        const sign = n > 0 ? "+" : "";
+        return <span style={{ color }}>{sign}{n.toFixed(2)}</span>;
+      }
+    },
     { title: "备注", dataIndex: "notes" },
   ];
 
@@ -212,6 +306,7 @@ export default function TxnPage() {
             <AutoComplete
               options={options}
               onSearch={onSearch}
+              onChange={() => { setTimeout(refreshContextInfo, 0); }}
               placeholder="如 510300.SH"
               allowClear
               notFoundContent={searching ? "搜索中..." : "可直接输入新代码"}
@@ -224,6 +319,7 @@ export default function TxnPage() {
 
           <Form.Item label="类型" name="type" initialValue="STOCK" rules={[{ required: true }]}>
             <Select
+              disabled={typeLocked}
               options={[
                 { value: "STOCK", label: "股票（交易所收盘价）" },
                 { value: "ETF", label: "ETF（交易所收盘价）" },
@@ -234,12 +330,45 @@ export default function TxnPage() {
           </Form.Item>
 
           <Form.Item label="交易日期" name="date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: "100%" }} />
+            <DatePicker style={{ width: "100%" }} onChange={() => { setTimeout(refreshContextInfo, 0); }} />
           </Form.Item>
 
           <Form.Item label="方向" name="action" rules={[{ required: true }]}>
-            <Select options={ACTIONS.map(a => ({ value: a, label: a }))} />
+            <Select options={ACTIONS.map(a => ({ value: a, label: a }))} onChange={() => { setTimeout(refreshContextInfo, 0); }} />
           </Form.Item>
+
+          {/* 当前持仓/价格提示 + 快捷仓位按钮 */}
+          <div style={{ marginBottom: 8 }}>
+            <Space wrap size={[8, 8]}>
+              <Typography.Text type="secondary">
+                标的名称：{curName ?? "-"}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                当前持仓：{curShares != null ? curShares : "-"}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                成本价：{curAvgCost != null ? curAvgCost : "-"}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                最新价：{lastClose != null ? lastClose : "-"}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                收益率：{retPct != null ? (retPct * 100).toFixed(2) + "%" : "-"}
+              </Typography.Text>
+              {tradePnl != null && (
+                <Typography.Text style={{ color: tradePnl > 0 ? "#cf1322" : tradePnl < 0 ? "#096dd9" : undefined }}>
+                  本次收益：{tradePnl > 0 ? "+" : ""}{tradePnl.toFixed(2)}
+                </Typography.Text>
+              )}
+              {curShares && curShares > 0 && form.getFieldValue("action") === "SELL" && (
+                <Space size={6}>
+                  <Button size="small" onClick={() => form.setFieldsValue({ shares: Number(curShares.toFixed(6)) })}>全仓</Button>
+                  <Button size="small" onClick={() => form.setFieldsValue({ shares: Number((curShares / 2).toFixed(6)) })}>半仓</Button>
+                  <Button size="small" onClick={() => form.setFieldsValue({ shares: Number((curShares / 4).toFixed(6)) })}>1/4 仓</Button>
+                </Space>
+              )}
+            </Space>
+          </div>
 
           <Form.Item
             label="数量（份/股）"
@@ -283,6 +412,16 @@ export default function TxnPage() {
           </Form.Item>
           <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入名称" }]}>
             <Input placeholder="如 沪深300ETF" />
+          </Form.Item>
+          <Form.Item label="类型" name="type" initialValue={form.getFieldValue("type") || "STOCK"} rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: "STOCK", label: "股票（交易所收盘价）" },
+                { value: "ETF", label: "ETF（交易所收盘价）" },
+                { value: "FUND", label: "基金（净值）" },
+                { value: "CASH", label: "现金/货基（不拉行情）" },
+              ]}
+            />
           </Form.Item>
           <Form.Item label="类别" name="category_id" rules={[{ required: true, message: "请选择类别" }]}>
             <Select

@@ -11,6 +11,9 @@ DEFAULTS = {
     "ma_long": "60",
     "ma_risk": "200",
     "tushare_token": "",   # 如果需要，可以留空
+    # 现金镜像所使用的现金标的代码（需在 instrument 表中存在并设为 active）。
+    # 默认与 seeds/instruments.csv 保持一致。
+    "cash_ts_code": "CASH.CNY",
 }
 
 def ensure_default_config():
@@ -38,6 +41,7 @@ def get_config() -> dict:
         "ma_long": int(cfg.get("ma_long", DEFAULTS["ma_long"])),
         "ma_risk": int(cfg.get("ma_risk", DEFAULTS["ma_risk"])),
         "tushare_token": cfg.get("tushare_token", DEFAULTS["tushare_token"]),
+        "cash_ts_code": cfg.get("cash_ts_code", DEFAULTS["cash_ts_code"]),
     }
     return out
 

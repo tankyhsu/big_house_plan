@@ -25,7 +25,7 @@ def create_instrument(ts_code: str, name: str, category_id: int, active: bool, l
 # ===== Instrument List (for autocomplete) =====
 def list_instruments(q: Optional[str] = None, active_only: bool = True) -> list[dict]:
     sql = """
-    SELECT i.ts_code, i.name, i.active, i.category_id,
+    SELECT i.ts_code, i.name, i.active, i.category_id, i.type,
            c.name AS cat_name, c.sub_name AS cat_sub
     FROM instrument i
     LEFT JOIN category c ON c.id = i.category_id

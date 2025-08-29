@@ -72,12 +72,15 @@ export type TxnItem = {
   id: number;
   trade_date: string; // YYYY-MM-DD
   ts_code: string;
+  name?: string | null;
   action: "BUY" | "SELL" | "DIV" | "FEE" | "ADJ";
   shares: number;
   price: number | null;
   amount: number | null;
   fee: number | null;
   notes: string | null;
+  realized_pnl?: number | null; // only for SELL
+  group_id?: number | null;     // 用于关联自动现金镜像
 };
 
 export type InstrumentLite = {

@@ -1,22 +1,108 @@
 from ..db import get_conn
 from ..logs import LogContext
-from typing import List, Tuple
+from .config_svc import get_config
+from typing import List, Tuple, Dict
+
+def _ensure_txn_group_id():
+    """确保 txn 表存在 group_id 列（用于将原始与现金镜像交易分组）。"""
+    try:
+        with get_conn() as conn:
+            cols = conn.execute("PRAGMA table_info(txn)").fetchall()
+            names = {c[1] for c in cols}
+            if "group_id" not in names:
+                conn.execute("ALTER TABLE txn ADD COLUMN group_id INTEGER")
+                conn.commit()
+    except Exception:
+        # 容错：不因迁移失败而阻断主流程（第一次运行可能并发等），
+        # 下次调用会再次尝试。
+        pass
 
 def list_txn(page:int, size:int) -> Tuple[int, List[dict]]:
+    """分页查询交易流水，并补充：
+    - name: instrument.name
+    - realized_pnl: 仅 SELL 行计算 = qty * (price - avg_cost_at_that_time) - fee
+      通过对该 ts_code 的全历史交易按时间顺序重放来获得 SELL 当时的成本。
+    """
+    _ensure_txn_group_id()
     with get_conn() as conn:
         total = conn.execute("SELECT COUNT(1) AS c FROM txn").fetchone()["c"]
-        rows = conn.execute("""
-            SELECT rowid as id, ts_code, trade_date, action, shares, price, amount, fee, notes
+        cur_rows = conn.execute(
+            """
+            SELECT rowid as id, ts_code, trade_date, action, shares, price, amount, fee, notes, group_id
             FROM txn ORDER BY trade_date DESC, rowid DESC LIMIT ? OFFSET ?
-        """, (size, (page-1)*size)).fetchall()
-        return total, [dict(r) for r in rows]
+            """,
+            (size, (page-1)*size)
+        ).fetchall()
+        items = [dict(r) for r in cur_rows]
+
+        if not items:
+            return total, items
+
+        # 准备名称映射
+        codes = sorted(list({r["ts_code"] for r in items}))
+        name_map: Dict[str, str] = {}
+        if codes:
+            q = "SELECT ts_code, name FROM instrument WHERE ts_code IN ({})".format(
+                ",".join(["?"]*len(codes))
+            )
+            for r in conn.execute(q, codes).fetchall():
+                name_map[r["ts_code"]] = r["name"]
+
+        # 计算每个 SELL 交易的 realized PnL，构建 id->pnl 映射
+        pnl_map: Dict[int, float] = {}
+        for code in codes:
+            # 拉该代码的全历史交易，按时间顺序
+            hist = conn.execute(
+                """
+                SELECT rowid AS id, action, shares, price, fee
+                FROM txn WHERE ts_code=?
+                ORDER BY trade_date ASC, rowid ASC
+                """,
+                (code,)
+            ).fetchall()
+            pos_shares = 0.0
+            avg_cost = 0.0
+            for h in hist:
+                act = (h["action"] or "").upper()
+                sh = float(h["shares"] or 0.0)
+                pr = float(h["price"] or 0.0)
+                fee = float(h["fee"] or 0.0)
+                if act == "BUY":
+                    new_shares = pos_shares + abs(sh)
+                    total_cost = pos_shares * avg_cost + abs(sh) * pr + fee
+                    avg_cost = (total_cost / new_shares) if new_shares > 0 else 0.0
+                    pos_shares = new_shares
+                elif act == "SELL":
+                    qty = abs(sh)
+                    pnl = qty * (pr - avg_cost) - fee
+                    pnl_map[int(h["id"])] = pnl
+                    pos_shares = round(pos_shares + sh, 8)  # sh 为负
+                    if pos_shares <= 0:
+                        pos_shares = 0.0
+                        avg_cost = 0.0
+                else:
+                    # DIV/FEE/ADJ 不影响均价法持仓成本计算
+                    pass
+
+        # 组装输出
+        for it in items:
+            it["name"] = name_map.get(it["ts_code"])  # 可能为 None
+            rp = pnl_map.get(int(it["id"]))
+            if rp is not None and (it["action"] or "").upper() == "SELL":
+                it["realized_pnl"] = float(rp)
+            else:
+                it["realized_pnl"] = None
+
+        return total, items
 
 def create_txn(data: dict, log: LogContext) -> dict:
+    _ensure_txn_group_id()
     action = data["action"].upper()
     shares = float(data["shares"])
     fee = float(data.get("fee") or 0)
     price = float(data.get("price") or 0)
     date = data["date"]  # YYYY-MM-DD
+    ts_code = data["ts_code"]
     if action == "SELL":
         shares = -abs(shares)
     elif action in ("BUY","DIV","FEE","ADJ"):
@@ -25,11 +111,15 @@ def create_txn(data: dict, log: LogContext) -> dict:
         raise ValueError("Unsupported action")
 
     with get_conn() as conn:
+        # 1) 写入原始交易（先写入，获取 id，随后设置 group_id=自身 id）
         cur = conn.execute(
-            "INSERT INTO txn(ts_code, trade_date, action, shares, price, amount, fee, notes) VALUES(?,?,?,?,?,?,?,?)",
-            (data["ts_code"], date, action, shares, price, data.get("amount"), fee, data.get("notes",""))
+            "INSERT INTO txn(ts_code, trade_date, action, shares, price, amount, fee, notes, group_id) VALUES(?,?,?,?,?,?,?,?,NULL)",
+            (ts_code, date, action, shares, price, data.get("amount"), fee, data.get("notes",""))
         )
-        row = conn.execute("SELECT shares, avg_cost FROM position WHERE ts_code=?", (data["ts_code"],)).fetchone()
+        orig_id = int(cur.lastrowid)
+        conn.execute("UPDATE txn SET group_id=? WHERE rowid=?", (orig_id, orig_id))
+        # 2) 更新原标的持仓（仅 BUY/SELL）
+        row = conn.execute("SELECT shares, avg_cost FROM position WHERE ts_code=?", (ts_code,)).fetchone()
         old_shares, old_cost = (row["shares"], row["avg_cost"]) if row else (0.0, 0.0)
 
         if action == "BUY":
@@ -37,16 +127,82 @@ def create_txn(data: dict, log: LogContext) -> dict:
             total_cost = old_shares * old_cost + abs(shares) * price + fee
             new_cost = (total_cost / new_shares) if new_shares > 0 else 0.0
             conn.execute("INSERT OR REPLACE INTO position(ts_code, shares, avg_cost, last_update) VALUES(?,?,?,?)",
-                         (data["ts_code"], new_shares, new_cost, date))
+                         (ts_code, new_shares, new_cost, date))
         elif action == "SELL":
             new_shares = round(old_shares + shares, 8)
             if new_shares < -1e-6:
                 conn.rollback()
                 raise ValueError("Sell exceeds current shares")
             conn.execute("INSERT OR REPLACE INTO position(ts_code, shares, avg_cost, last_update) VALUES(?,?,?,?)",
-                         (data["ts_code"], new_shares, old_cost if new_shares > 0 else 0.0, date))
+                         (ts_code, new_shares, old_cost if new_shares > 0 else 0.0, date))
+
+        # 3) 现金镜像（当且仅当：a) 标的不是现金；b) 动作为 BUY/SELL/DIV/FEE/ADJ）
+        cfg = get_config()
+        cash_code = str(cfg.get("cash_ts_code") or "CASH.CNY")
+        # 查询当前标的类型，若为 CASH 则不做镜像
+        inst_row = conn.execute("SELECT COALESCE(type,'') AS t FROM instrument WHERE ts_code=?", (ts_code,)).fetchone()
+        inst_type = (inst_row["t"] or "").upper() if inst_row else ""
+        is_cash_inst = (inst_type == "CASH") or (ts_code == cash_code)
+        if not is_cash_inst:
+            # 计算现金变动（镜像交易的 direction 与净流向）
+            amt_field = data.get("amount")
+            amt_from_price = abs(float(data["shares"])) * (price or 0.0)  # 使用原始 shares 的绝对值
+            gross = float(amt_field) if amt_field is not None else amt_from_price
+            mirror_action = None
+            mirror_abs_shares = 0.0  # 始终为正数，代表现金数量（以 1 元面值计）
+
+            if action == "BUY":
+                # 现金流出：成交额 + 手续费
+                mirror_action = "SELL"
+                mirror_abs_shares = max(0.0, gross + fee)
+            elif action == "SELL":
+                # 现金流入：成交额 - 手续费
+                mirror_action = "BUY"
+                mirror_abs_shares = max(0.0, gross - fee)
+            elif action == "DIV":
+                mirror_action = "BUY"
+                mirror_abs_shares = max(0.0, gross)
+            elif action == "FEE":
+                mirror_action = "SELL"
+                # 费用支持写在 fee 或 amount
+                mirror_abs_shares = max(0.0, (fee if fee else gross))
+            elif action == "ADJ":
+                # amount>0 视为现金流入；amount<0 视为现金流出（无手续费）
+                a = float(amt_field or 0.0)
+                if a > 0:
+                    mirror_action = "BUY"; mirror_abs_shares = a
+                elif a < 0:
+                    mirror_action = "SELL"; mirror_abs_shares = -a
+
+            if mirror_action and mirror_abs_shares > 0:
+                # 写入现金镜像交易（price=1，fee=0），shares 符号随 action 约定
+                mirror_shares = mirror_abs_shares if mirror_action == "BUY" else -mirror_abs_shares
+                conn.execute(
+                    "INSERT INTO txn(ts_code, trade_date, action, shares, price, amount, fee, notes, group_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (cash_code, date, mirror_action, mirror_shares, 1.0, None, 0.0,
+                     f"AUTO-MIRROR for {ts_code} {action}", orig_id)
+                )
+                # 更新现金持仓
+                cash_row = conn.execute("SELECT shares, avg_cost FROM position WHERE ts_code=?", (cash_code,)).fetchone()
+                cash_old_shares, cash_old_cost = (cash_row["shares"], cash_row["avg_cost"]) if cash_row else (0.0, 0.0)
+                if mirror_action == "BUY":
+                    c_new_shares = cash_old_shares + mirror_abs_shares
+                    c_total_cost = cash_old_shares * cash_old_cost + mirror_abs_shares * 1.0
+                    c_new_cost = (c_total_cost / c_new_shares) if c_new_shares > 0 else 0.0
+                    conn.execute(
+                        "INSERT OR REPLACE INTO position(ts_code, shares, avg_cost, last_update) VALUES(?,?,?,?)",
+                        (cash_code, c_new_shares, c_new_cost, date)
+                    )
+                else:  # SELL 现金
+                    c_new_shares = round(cash_old_shares - mirror_abs_shares, 8)
+                    # 允许现金为负代表透支；仅在归零时将均价清 0，其余保留旧均价（通常为 1）
+                    c_new_cost = 0.0 if abs(c_new_shares) < 1e-12 else cash_old_cost
+                    conn.execute(
+                        "INSERT OR REPLACE INTO position(ts_code, shares, avg_cost, last_update) VALUES(?,?,?,?)",
+                        (cash_code, c_new_shares, c_new_cost, date)
+                    )
         conn.commit()
-        pos = conn.execute("SELECT ts_code, shares, avg_cost FROM position WHERE ts_code=?", (data["ts_code"],)).fetchone()
+        pos = conn.execute("SELECT ts_code, shares, avg_cost FROM position WHERE ts_code=?", (ts_code,)).fetchone()
     result = {"ts_code": pos["ts_code"], "shares": pos["shares"], "avg_cost": pos["avg_cost"]}
     log.set_entity("TXN", f"{cur.lastrowid}")
     log.set_after({"position": result})
