@@ -22,7 +22,7 @@ from .services.category_svc import create_category, list_categories
 from .services.txn_svc import create_txn, list_txn, bulk_txn
 from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
-from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal
+from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal, aggregate_kpi
 from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
 from .db import get_conn
 from .repository.instrument_repo import set_active as repo_set_active
@@ -87,6 +87,22 @@ def api_dashboard(date: str = Query(..., pattern=r"^\d{8}$")):
     数据源为 portfolio_daily / category_daily / signal。
     """
     return get_dashboard(date)
+
+@app.get("/api/dashboard/aggregate")
+def api_dashboard_aggregate(
+    start: str = Query(..., pattern=r"^\d{8}$"),
+    end: str = Query(..., pattern=r"^\d{8}$"),
+    period: Literal["day", "week", "month"] = Query("day")
+):
+    """
+    聚合区间内的 Dashboard KPI 序列（day/week/month）。
+    返回 items: [{date: YYYY-MM-DD, market_value, cost, unrealized_pnl, ret}]
+    """
+    try:
+        items = aggregate_kpi(start, end, period)
+        return {"period": period, "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/category")
 def api_category(date: str = Query(..., pattern=r"^\d{8}$")):

@@ -19,7 +19,7 @@ def _active_non_cash_ts_codes(conn) -> List[str]:
             out.append(r["ts_code"])
     return out
 
-def sync_prices_tushare(trade_date: str, log: LogContext, ts_codes: Optional[List[str]] = None) -> dict:
+def sync_prices_tushare(trade_date: str, log: LogContext, ts_codes: Optional[List[str]] = None, fund_rate_per_min: Optional[int] = None) -> dict:
     """
     同步指定交易日(YYYYMMDD)的市值数据，三路分流：
       - STOCK：TuShare pro.daily（股票/可交易个股）
@@ -48,6 +48,31 @@ def sync_prices_tushare(trade_date: str, log: LogContext, ts_codes: Optional[Lis
 
     import tushare as ts
     pro = ts.pro_api(token)
+    import time
+
+    class _RateLimiter:
+        def __init__(self, max_per_min: Optional[int]):
+            self.max = max_per_min if (max_per_min and max_per_min > 0) else None
+            self.window_start = time.time()
+            self.count = 0
+
+        def tick(self):
+            if not self.max:
+                return
+            now = time.time()
+            elapsed = now - self.window_start
+            if elapsed >= 60.0:
+                self.window_start = now
+                self.count = 0
+            if self.count >= self.max:
+                sleep_for = max(0.01, 60.0 - elapsed + 0.05)
+                print(f"[sync_prices] rate-limit: sleeping {sleep_for:.2f}s to respect {self.max}/min")
+                time.sleep(sleep_for)
+                self.window_start = time.time()
+                self.count = 0
+            self.count += 1
+
+    rate = _RateLimiter(fund_rate_per_min)
 
     # 读取启用标的列表 + 类型（严格按 instrument.type）
     with get_conn() as conn:
@@ -186,6 +211,7 @@ def sync_prices_tushare(trade_date: str, log: LogContext, ts_codes: Optional[Lis
         with get_conn() as conn:
             for code in etf_like:
                 try:
+                    rate.tick()
                     # 基金日线行情（场内ETF/LOF）：close、open、high、low、vol、amount 等
                     etf_df = pro.fund_daily(ts_code=code, start_date=start_str, end_date=end_str)
                     rows_count = 0 if (etf_df is None) else len(etf_df)
@@ -248,6 +274,7 @@ def sync_prices_tushare(trade_date: str, log: LogContext, ts_codes: Optional[Lis
         with get_conn() as conn:
             for code in fund_like:
                 try:
+                    rate.tick()
                     nav_df = pro.fund_nav(ts_code=code, start_date=start_str, end_date=end_str)
                     rows_count = 0 if (nav_df is None) else len(nav_df)
                     print(f"[sync_prices] FUND fund_nav({code}) -> rows={rows_count}")

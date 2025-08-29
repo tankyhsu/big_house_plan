@@ -1,16 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { Card, DatePicker, Space } from "antd";
+import { Card, DatePicker, Space, Button } from "antd";
 import dayjs, { Dayjs } from "dayjs";
-import { fetchDashboard } from "../../api/hooks";
+import { fetchDashboard, fetchDashboardAgg } from "../../api/hooks";
 
-function genDateRange(start: Dayjs, end: Dayjs) {
+function genDateRange(start: Dayjs, end: Dayjs, stepDays: number = 1) {
   const arr: string[] = [];
   let d = start.startOf("day");
-  while (d.isBefore(end) || d.isSame(end, "day")) {
+  const last = end.startOf("day");
+  while (d.isBefore(last) || d.isSame(last, "day")) {
     arr.push(d.format("YYYYMMDD"));
-    d = d.add(1, "day");
+    d = d.add(stepDays, "day");
   }
+  // 确保末尾日期包含在内（即便 step 跨过了）
+  const lastStr = last.format("YYYYMMDD");
+  if (arr[arr.length - 1] !== lastStr) arr.push(lastStr);
   return arr;
 }
 
@@ -27,19 +31,22 @@ export default function TotalAssetsLine() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const dates = genDateRange(range[0], range[1]);
+    const totalDays = range[1].diff(range[0], "day") + 1;
+    // 选择后端聚合的 period
+    let period: "day" | "week" | "month" = "day";
+    if (totalDays <= 100) period = "day";
+    else if (totalDays <= 400) period = "week"; // ~52点/年
+    else period = "month"; // 长周期用月
+
     setLoading(true);
-    Promise.all(dates.map((d) => fetchDashboard(d).catch(() => null)))
-      .then((resList) => {
-        const rows = resList
-          .map((res, i) => {
-            const dashDate = dayjs(dates[i], "YYYYMMDD").format("YYYY-MM-DD");
-            const mv = res?.kpi?.market_value ?? null;
-            return mv != null ? { date: dashDate, value: Number(mv.toFixed(2)) } : null;
-          })
-          .filter(Boolean) as { date: string; value: number }[];
+    const start = range[0].format("YYYYMMDD");
+    const end = range[1].format("YYYYMMDD");
+    fetchDashboardAgg(start, end, period)
+      .then((res) => {
+        const rows = (res.items || []).map((it) => ({ date: it.date, value: Number((it.market_value || 0).toFixed(2)) }));
         setSeries(rows);
       })
+      .catch(() => setSeries([]))
       .finally(() => setLoading(false));
   }, [range]);
 
@@ -83,12 +90,31 @@ export default function TotalAssetsLine() {
           }
         : undefined;
 
-    // 仅在每月1号显示X轴刻度标签；首尾保留
+    // 根据区间长度自适应X轴刻度密度
+    const totalDays = series.length > 1
+      ? dayjs(series[series.length - 1].date).diff(dayjs(series[0].date), "day") + 1
+      : 0;
+
     const xLabelInterval = (index: number, value: string) => {
       const isFirst = index === 0;
       const isLast = index === x.length - 1;
-      const isMonthStart = dayjs(value, "YYYY-MM-DD").date() === 1;
-      return isFirst || isLast || isMonthStart;
+      const d = dayjs(value, "YYYY-MM-DD");
+      if (isFirst || isLast) return true;
+      if (totalDays <= 100) {
+        // 近3个月：每周一标注
+        return d.day() === 1;
+      } else if (totalDays <= 200) {
+        // 近6个月：每月1日与15日
+        const day = d.date();
+        return day === 1 || day === 15;
+      } else if (totalDays <= 400) {
+        // 近1年：每月1日
+        return d.date() === 1;
+      } else {
+        // 更长：每季度首月1日（1/4/7/10）
+        const m = d.month() + 1;
+        return d.date() === 1 && (m === 1 || m === 4 || m === 7 || m === 10);
+      }
     };
 
     return {
@@ -149,6 +175,10 @@ export default function TotalAssetsLine() {
       size="small"
       extra={
         <Space>
+          <Button size="small" onClick={() => setRange([dayjs().subtract(3, "month"), dayjs()])}>近3月</Button>
+          <Button size="small" onClick={() => setRange([dayjs().subtract(6, "month"), dayjs()])}>近6月</Button>
+          <Button size="small" onClick={() => setRange([dayjs().subtract(1, "year"), dayjs()])}>近1年</Button>
+          <Button size="small" onClick={() => setRange([dayjs().subtract(3, "year"), dayjs()])}>近3年</Button>
           <DatePicker.RangePicker
             value={range}
             allowClear={false}

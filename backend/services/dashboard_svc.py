@@ -4,6 +4,7 @@ from ..db import get_conn
 from ..repository import reporting_repo
 from .utils import yyyyMMdd_to_dash
 from .config_svc import get_config
+from datetime import datetime, timedelta
 # get_dashboard, list_category, list_position, list_signal 放这里（你已有的“动态口径”实现）
 
 def get_dashboard(date_yyyymmdd: str) -> dict:
@@ -180,3 +181,60 @@ def list_signal(date_yyyymmdd: str, typ: str|None) -> list[dict]:
         else:
             rows = conn.execute("SELECT * FROM signal WHERE trade_date=? ORDER BY level DESC", (d,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def _iter_dates(start_dash: str, end_dash: str) -> list[str]:
+    d0 = datetime.fromisoformat(start_dash)
+    d1 = datetime.fromisoformat(end_dash)
+    out = []
+    cur = d0
+    while cur <= d1:
+        out.append(cur.strftime("%Y-%m-%d"))
+        cur += timedelta(days=1)
+    return out
+
+
+def aggregate_kpi(start_yyyymmdd: str, end_yyyymmdd: str, period: str = "day") -> list[dict]:
+    """
+    聚合区间内的 Dashboard KPI：
+      - period=day：逐日
+      - period=week：每周（ISO 周）末一个点（区间内该周的最后一天）
+      - period=month：每月末一个点（区间内该月的最后一天）
+    复用动态口径 get_dashboard，避免依赖 snapshot 完整性。
+    """
+    sd = yyyyMMdd_to_dash(start_yyyymmdd)
+    ed = yyyyMMdd_to_dash(end_yyyymmdd)
+    days = _iter_dates(sd, ed)
+
+    p = (period or "day").lower()
+    if p == "day":
+        targets = days
+    elif p == "week":
+        # 分组到 (ISO 年, ISO 周)，取每组最后一天
+        buckets = {}
+        for d in days:
+            dt = datetime.fromisoformat(d)
+            iso = dt.isocalendar()
+            key = (iso[0], iso[1])  # (year, week)
+            buckets.setdefault(key, []).append(d)
+        targets = [v[-1] for _, v in sorted(buckets.items())]
+    else:  # month
+        buckets = {}
+        for d in days:
+            dt = datetime.fromisoformat(d)
+            key = (dt.year, dt.month)
+            buckets.setdefault(key, []).append(d)
+        targets = [v[-1] for _, v in sorted(buckets.items())]
+
+    out = []
+    for dash_date in targets:
+        ymd = dash_date.replace("-", "")
+        k = get_dashboard(ymd)
+        out.append({
+            "date": dash_date,
+            "market_value": k["kpi"]["market_value"],
+            "cost": k["kpi"]["cost"],
+            "unrealized_pnl": k["kpi"]["unrealized_pnl"],
+            "ret": k["kpi"]["ret"],
+        })
+    return out

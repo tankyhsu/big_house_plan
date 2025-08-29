@@ -5,6 +5,11 @@ export async function fetchDashboard(date: string): Promise<DashboardResp> {
   const { data } = await client.get("/api/dashboard", { params: { date } });
   return data;
 }
+
+export async function fetchDashboardAgg(startYmd: string, endYmd: string, period: "day"|"week"|"month") {
+  const { data } = await client.get("/api/dashboard/aggregate", { params: { start: startYmd, end: endYmd, period } });
+  return data as { period: string; items: { date: string; market_value: number; cost: number; unrealized_pnl: number; ret: number | null; }[] };
+}
 export async function fetchCategory(date: string): Promise<CategoryRow[]> {
   const { data } = await client.get("/api/category", { params: { date } });
   return data;

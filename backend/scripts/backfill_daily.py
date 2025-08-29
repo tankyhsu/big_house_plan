@@ -88,6 +88,7 @@ def main():
     parser.set_defaults(sync=True)
     parser.add_argument("--dry-run", help="只打印计划，不实际执行", action="store_true")
     parser.add_argument("--sleep-ms", type=int, default=0, help="每日日志之间的间隔毫秒（可用于限速）")
+    parser.add_argument("--fund-rate-per-min", type=int, default=0, help="TuShare 基金相关接口限流（每分钟最大调用数，0=不限制）")
     args = parser.parse_args()
 
     today = datetime.now().strftime("%Y%m%d")
@@ -114,7 +115,7 @@ def main():
         try:
             if args.sync:
                 log_sync = LogContext("BACKFILL_SYNC")
-                res = sync_prices_tushare(ymd, log_sync)
+                res = sync_prices_tushare(ymd, log_sync, fund_rate_per_min=(args.fund_rate_per_min or None))
                 print(f"[backfill] sync result: {res}")
             log_calc = LogContext("BACKFILL_CALC")
             calc(ymd, log_calc)
