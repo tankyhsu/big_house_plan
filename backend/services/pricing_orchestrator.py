@@ -1,0 +1,170 @@
+from __future__ import annotations
+from typing import Optional, List, Dict
+from ..db import get_conn
+from ..logs import LogContext
+from ..repository import instrument_repo, price_repo
+from .utils import yyyyMMdd_to_dash
+
+
+class PriceProviderPort:
+    def daily_for_date(self, date_yyyymmdd: str): ...
+    def trade_cal_is_open(self, date_yyyymmdd: str) -> Optional[bool]: ...
+    def trade_cal_backfill_recent_open(self, end_yyyymmdd: str, lookback_days: int = 30) -> Optional[str]: ...
+    def fund_daily_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str): ...
+    def fund_nav_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str): ...
+
+
+def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext, ts_codes: Optional[List[str]] = None) -> dict:
+    trade_date = date_yyyymmdd
+    used_dates: Dict[str, str] = {}
+    total_found = total_updated = total_skipped = 0
+
+    # Resolve targets + types
+    with get_conn() as conn:
+        if ts_codes:
+            tmap = instrument_repo.type_map_for(conn, ts_codes)
+            all_targets = [(code, (tmap.get(code, "") or "").upper()) for code in ts_codes]
+        else:
+            rows = conn.execute("SELECT ts_code, COALESCE(type,'') AS t FROM instrument WHERE active=1").fetchall()
+            all_targets = [(r["ts_code"], (r["t"] or "").upper()) for r in rows]
+
+    if not all_targets:
+        info = {"date": trade_date, "found": 0, "updated": 0, "skipped": 0, "reason": "no_active_codes"}
+        log.set_after(info); log.write("DEBUG", "[orchestrator] no_active_codes")
+        return info
+
+    stock_like: List[str] = []
+    etf_like: List[str] = []
+    fund_like: List[str] = []
+    for code, t in all_targets:
+        if t == "CASH":
+            continue
+        if t == "ETF" or "ETF" in t:
+            etf_like.append(code)
+        elif t in ("FUND", "FUND_OPEN", "MUTUAL"):
+            fund_like.append(code)
+        else:
+            stock_like.append(code)
+
+    # STOCK: use daily with trade_cal fallback
+    if stock_like:
+        used_date_stock = trade_date
+        df = provider.daily_for_date(trade_date)
+        if df is None or df.empty:
+            is_open = provider.trade_cal_is_open(trade_date)
+            need_backfill = (is_open is None) or (is_open is False)
+            if need_backfill:
+                back = provider.trade_cal_backfill_recent_open(trade_date, lookback_days=30)
+                if back:
+                    used_date_stock = back
+                    tmp = provider.daily_for_date(used_date_stock)
+                    if tmp is not None and not tmp.empty:
+                        df = tmp
+        if df is not None and not df.empty:
+            df = df[df["ts_code"].isin(stock_like)]
+            total_found += len(df)
+            bars = []
+            for _, r in df.iterrows():
+                bars.append({
+                    "ts_code": r["ts_code"],
+                    "trade_date": yyyyMMdd_to_dash(used_date_stock),
+                    "close": float(r["close"]) if r["close"] is not None else None,
+                    "pre_close": float(r.get("pre_close")) if "pre_close" in r and r["pre_close"] is not None else None,
+                    "open": float(r["open"]) if r["open"] is not None else None,
+                    "high": float(r["high"]) if r["high"] is not None else None,
+                    "low": float(r["low"]) if r["low"] is not None else None,
+                    "vol": float(r["vol"]) if r["vol"] is not None else None,
+                    "amount": float(r["amount"]) if r["amount"] is not None else None,
+                })
+                used_dates[r["ts_code"]] = used_date_stock
+            with get_conn() as conn:
+                price_repo.upsert_price_eod_many(conn, bars)
+            total_updated += len(bars)
+
+    # ETF: fund_daily window, pick last <= end
+    if etf_like:
+        from datetime import datetime, timedelta
+        end_dt = datetime.strptime(trade_date, "%Y%m%d")
+        start_dt = end_dt - timedelta(days=30)
+        start_str = start_dt.strftime("%Y%m%d")
+        end_str = trade_date
+        bars = []
+        for code in etf_like:
+            etf_df = provider.fund_daily_window(code, start_str, end_str)
+            if etf_df is None or etf_df.empty:
+                continue
+            etf_df = etf_df.sort_values("trade_date")
+            etf_df = etf_df[etf_df["trade_date"] <= end_str]
+            if etf_df.empty:
+                continue
+            last = etf_df.iloc[-1]
+            used_date = str(last["trade_date"])
+            close = last.get("close")
+            if close is None:
+                continue
+            bars.append({
+                "ts_code": code,
+                "trade_date": yyyyMMdd_to_dash(used_date),
+                "close": float(close),
+                "pre_close": float(last.get("pre_close")) if last.get("pre_close") is not None else None,
+                "open": float(last.get("open")) if last.get("open") is not None else None,
+                "high": float(last.get("high")) if last.get("high") is not None else None,
+                "low": float(last.get("low")) if last.get("low") is not None else None,
+                "vol": float(last.get("vol")) if last.get("vol") is not None else None,
+                "amount": float(last.get("amount")) if last.get("amount") is not None else None,
+            })
+            used_dates[code] = used_date
+        if bars:
+            with get_conn() as conn:
+                price_repo.upsert_price_eod_many(conn, bars)
+            total_found += len(bars)
+            total_updated += len(bars)
+
+    # FUND: fund_nav window, pick last <= end
+    if fund_like:
+        from datetime import datetime, timedelta
+        end_dt = datetime.strptime(trade_date, "%Y%m%d")
+        start_dt = end_dt - timedelta(days=30)
+        start_str = start_dt.strftime("%Y%m%d")
+        end_str = trade_date
+        bars = []
+        for code in fund_like:
+            nav_df = provider.fund_nav_window(code, start_str, end_str)
+            if nav_df is None or nav_df.empty:
+                continue
+            nav_df = nav_df.sort_values("nav_date")
+            nav_df = nav_df[nav_df["nav_date"] <= end_str]
+            if nav_df.empty:
+                continue
+            last = nav_df.iloc[-1]
+            nav = last.get("unit_nav") or last.get("acc_nav")
+            used_date = str(last["nav_date"])
+            if nav is None:
+                continue
+            bars.append({
+                "ts_code": code,
+                "trade_date": yyyyMMdd_to_dash(used_date),
+                "close": float(nav),
+                "pre_close": None,
+                "open": None,
+                "high": None,
+                "low": None,
+                "vol": None,
+                "amount": None,
+            })
+            used_dates[code] = used_date
+        if bars:
+            with get_conn() as conn:
+                price_repo.upsert_price_eod_many(conn, bars)
+            total_found += len(bars)
+            total_updated += len(bars)
+
+    result = {
+        "date": trade_date,
+        "found": int(total_found),
+        "updated": int(total_updated),
+        "skipped": int(total_skipped),
+        "used_dates_uniq": sorted(list(set(used_dates.values()))) if used_dates else []
+    }
+    log.set_after(result); log.write("DEBUG", "[orchestrator] done")
+    return result

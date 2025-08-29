@@ -29,6 +29,11 @@ def tmp_db_path(tmp_path_factory):
 
 @pytest.fixture()
 def client(tmp_db_path):
+    # Ensure schemas required by logging/config exist before creating client
+    from backend.logs import ensure_log_schema
+    from backend.services.config_svc import ensure_default_config
+    ensure_log_schema()
+    ensure_default_config()
     # Import app after DB ready so startup hooks can use it
     from backend.api import app
     from fastapi.testclient import TestClient
@@ -51,7 +56,6 @@ def _clean_db(tmp_db_path):
         "category_daily",
         "signal",
         "config",
-        "operation_log",
     ]
     conn = sqlite3.connect(tmp_db_path)
     try:

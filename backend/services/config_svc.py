@@ -14,6 +14,8 @@ DEFAULTS = {
     # 现金镜像所使用的现金标的代码（需在 instrument 表中存在并设为 active）。
     # 默认与 seeds/instruments.csv 保持一致。
     "cash_ts_code": "CASH.CNY",
+    # TuShare 基金相关接口限流：每分钟最大调用次数（0 或缺省表示不限制）
+    "tushare_fund_rate_per_min": "80",
 }
 
 def ensure_default_config():
@@ -42,6 +44,7 @@ def get_config() -> dict:
         "ma_risk": int(cfg.get("ma_risk", DEFAULTS["ma_risk"])),
         "tushare_token": cfg.get("tushare_token", DEFAULTS["tushare_token"]),
         "cash_ts_code": cfg.get("cash_ts_code", DEFAULTS["cash_ts_code"]),
+        "tushare_fund_rate_per_min": int(cfg.get("tushare_fund_rate_per_min", DEFAULTS["tushare_fund_rate_per_min"])) ,
     }
     return out
 

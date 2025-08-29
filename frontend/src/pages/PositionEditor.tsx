@@ -5,7 +5,7 @@ import { Tooltip, Tag  } from "antd";
 import { fetchIrrBatch } from "../api/hooks";
 import dayjs from "dayjs";
 import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
-import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, deletePositionOne, cleanupZeroPositions } from "../api/hooks";
+import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, deletePositionOne, cleanupZeroPositions, lookupInstrument } from "../api/hooks";
 
 export default function PositionEditor() {
   const [data, setData] = useState<PositionRaw[]>([]);
@@ -161,6 +161,28 @@ export default function PositionEditor() {
       message.error(e.message || "新增失败");
     }
   };
+
+  // 新代码时：自动从 TuShare 查询基础信息与建仓日的价格/净值（如提供）
+  useEffect(() => {
+    const tsVal = createForm.getFieldValue("ts_code");
+    const code: string | undefined = (typeof tsVal === "string" ? tsVal : tsVal?.value)?.trim();
+    if (!code) return;
+    if (!isNewInstrument()) return; // 仅新代码时触发
+    const dt = createForm.getFieldValue("date");
+    const ymd: string | undefined = dt ? dt.format("YYYYMMDD") : undefined;
+    lookupInstrument(code, ymd).then(info => {
+      if (info?.name && !createForm.getFieldValue("inst_name")) {
+        createForm.setFieldsValue({ inst_name: info.name });
+      }
+      if (info?.type && !createForm.getFieldValue("inst_type")) {
+        createForm.setFieldsValue({ inst_type: info.type });
+      }
+      if (info?.price?.close && !createForm.getFieldValue("avg_cost")) {
+        createForm.setFieldsValue({ avg_cost: Number(info.price.close) });
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createForm.getFieldValue("ts_code"), createForm.getFieldValue("date")]);
 
   // 只展示与“删除 0 仓位/批量清理/开关”的增量
   

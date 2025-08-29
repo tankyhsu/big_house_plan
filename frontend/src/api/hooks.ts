@@ -90,6 +90,11 @@ export async function createInstrument(payload: { ts_code: string; name: string;
   return data;
 }
 
+export async function lookupInstrument(ts_code: string, ymd?: string) {
+  const { data } = await client.get("/api/instrument/lookup", { params: { ts_code, date: ymd } });
+  return data as { ts_code: string; name?: string; type?: string; basic?: any; price?: { trade_date: string; close: number } | null };
+}
+
 // 补充后端返回的原因字段
 export type IrrRow = {
   ts_code: string;

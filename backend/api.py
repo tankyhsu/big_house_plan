@@ -587,3 +587,78 @@ def api_price_last(ts_code: str = Query(...), date: str | None = Query(None, pat
         return {"trade_date": last[0], "close": float(last[1])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# 十、标的查找（TuShare 辅助）
+# =============================================================================
+@app.get("/api/instrument/lookup")
+def api_instrument_lookup(ts_code: str = Query(...), date: str | None = Query(None, pattern=r"^\d{8}$")):
+    cfg = get_config()
+    token = cfg.get("tushare_token")
+    if not token:
+        raise HTTPException(status_code=400, detail="no_tushare_token")
+    prov = TuShareProvider(token)
+    basic = prov.fund_basic_one(ts_code) or prov.stock_basic_one(ts_code)
+    out_type = None
+    name = None
+    if basic:
+        name = basic.get("name")
+        ft = (basic.get("fund_type") or "").upper()
+        if ft:
+            out_type = "ETF" if "ETF" in ft else "FUND"
+        else:
+            out_type = "STOCK"
+    if not out_type:
+        if ts_code.endswith(".OF"):
+            out_type = "FUND"
+        elif ts_code.endswith(".SH") or ts_code.endswith(".SZ"):
+            out_type = "ETF"
+        else:
+            out_type = "STOCK"
+
+    price = None
+    if date:
+        try:
+            if out_type == "STOCK":
+                df = prov.daily_for_date(date)
+                used = date
+                if df is None or df.empty:
+                    back = prov.trade_cal_backfill_recent_open(date, 30)
+                    if back:
+                        used = back
+                        df = prov.daily_for_date(used)
+                if df is not None and not df.empty:
+                    import pandas as pd
+                    row = df[df["ts_code"] == ts_code]
+                    if not row.empty:
+                        c = row.iloc[0].get("close")
+                        if c is not None:
+                            price = {"trade_date": f"{used[0:4]}-{used[4:6]}-{used[6:8]}", "close": float(c)}
+            elif out_type == "ETF":
+                from datetime import datetime, timedelta
+                end_dt = datetime.strptime(date, "%Y%m%d"); start_dt = end_dt - timedelta(days=30)
+                df = prov.fund_daily_window(ts_code, start_dt.strftime("%Y%m%d"), date)
+                if df is not None and not df.empty:
+                    df = df.sort_values("trade_date"); df = df[df["trade_date"] <= date]
+                    if not df.empty:
+                        last = df.iloc[-1]; c = last.get("close")
+                        if c is not None:
+                            used = str(last["trade_date"])
+                            price = {"trade_date": f"{used[0:4]}-{used[4:6]}-{used[6:8]}", "close": float(c)}
+            else:
+                from datetime import datetime, timedelta
+                end_dt = datetime.strptime(date, "%Y%m%d"); start_dt = end_dt - timedelta(days=30)
+                df = prov.fund_nav_window(ts_code, start_dt.strftime("%Y%m%d"), date)
+                if df is not None and not df.empty:
+                    df = df.sort_values("nav_date"); df = df[df["nav_date"] <= date]
+                    if not df.empty:
+                        last = df.iloc[-1]
+                        nav = last.get("unit_nav") or last.get("acc_nav")
+                        if nav is not None:
+                            used = str(last["nav_date"])
+                            price = {"trade_date": f"{used[0:4]}-{used[4:6]}-{used[6:8]}", "close": float(nav)}
+        except Exception as e:
+            print(f"[lookup] fetch price failed ts={ts_code} date={date}: {e}")
+
+    return {"ts_code": ts_code, "name": name, "type": out_type, "basic": basic, "price": price}

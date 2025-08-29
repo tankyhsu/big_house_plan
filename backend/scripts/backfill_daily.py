@@ -23,6 +23,9 @@ from backend.logs import LogContext
 from backend.services.utils import yyyyMMdd_to_dash
 from backend.services.calc_svc import calc
 from backend.services.pricing_svc import sync_prices_tushare
+from backend.services.pricing_orchestrator import sync_prices as orch_sync
+from backend.providers.tushare_provider import TuShareProvider
+from backend.services.config_svc import get_config
 # 如果你的定价/计算服务路径不同，请对应调整 import
 
 START_DEFAULT = "20200101"
@@ -87,8 +90,8 @@ def main():
     parser.add_argument("--no-sync", dest="sync", help="不做价格同步（仅用现有 price_eod）", action="store_false")
     parser.set_defaults(sync=True)
     parser.add_argument("--dry-run", help="只打印计划，不实际执行", action="store_true")
-    parser.add_argument("--sleep-ms", type=int, default=0, help="每日日志之间的间隔毫秒（可用于限速）")
-    parser.add_argument("--fund-rate-per-min", type=int, default=0, help="TuShare 基金相关接口限流（每分钟最大调用数，0=不限制）")
+    parser.add_argument("--sleep-ms", type=int, default=100, help="每日日志之间的间隔毫秒（可用于限速）")
+    parser.add_argument("--fund-rate-per-min", type=int, default=80, help="TuShare 基金相关接口限流（每分钟最大调用数，0=不限制）")
     args = parser.parse_args()
 
     today = datetime.now().strftime("%Y%m%d")
@@ -108,15 +111,32 @@ def main():
 
     from time import sleep
 
+    # 构建可复用 Provider（若配置中有 token 且需要同步）
+    provider = None
+    if args.sync:
+        cfg = get_config()
+        token = cfg.get("tushare_token")
+        if token:
+            rate = (args.fund_rate_per_min or None)
+            try:
+                if rate is None:
+                    v = int(cfg.get("tushare_fund_rate_per_min", 0) or 0)
+                    rate = v if v > 0 else None
+            except Exception:
+                rate = None
+            provider = TuShareProvider(token, fund_rate_per_min=rate)
+        else:
+            print("[backfill] no tushare_token in config; will skip price sync and only calc")
+
     total = 0
     for ymd in yyyymmdd_iter(start, end):
         dash_date = yyyyMMdd_to_dash(ymd)
         print(f"[backfill] === {ymd} ({dash_date}) ===")
         try:
-            if args.sync:
+            if args.sync and provider is not None:
                 log_sync = LogContext("BACKFILL_SYNC")
-                res = sync_prices_tushare(ymd, log_sync, fund_rate_per_min=(args.fund_rate_per_min or None))
-                print(f"[backfill] sync result: {res}")
+                res = orch_sync(ymd, provider, log_sync)
+                print(f"[backfill] sync(orch) result: {res}")
             log_calc = LogContext("BACKFILL_CALC")
             calc(ymd, log_calc)
             print(f"[backfill] calc done for {dash_date}")
