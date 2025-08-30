@@ -117,12 +117,30 @@ export default function TxnPage() {
   const watchDate = Form.useWatch("date", form);
   const watchAction = Form.useWatch("action", form);
   const watchShares = Form.useWatch("shares", form);
+  const watchAmount = Form.useWatch("amount", form);
+  const watchType = Form.useWatch("type", form);
   const watchPrice = Form.useWatch("price", form);
   const watchFee = Form.useWatch("fee", form);
   useEffect(() => { 
     refreshContextInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchTsCode, watchDate, watchAction, posRaw]);
+
+  // 当类型为 CASH 时：固定价格为 1；若填写金额则自动折算数量
+  useEffect(() => {
+    if (form.getFieldValue('type') === 'CASH') {
+      if (form.getFieldValue('price') !== 1) {
+        form.setFieldsValue({ price: 1 });
+      }
+      const amt = form.getFieldValue('amount');
+      if (typeof amt === 'number' && !Number.isNaN(amt)) {
+        const q = Math.abs(Number(amt));
+        if (q > 0 && form.getFieldValue('shares') !== q) {
+          form.setFieldsValue({ shares: q });
+        }
+      }
+    }
+  }, [watchType, watchAmount, watchAction]);
 
   // 计算本次卖出收益（只在 SELL 下显示）；= shares * (price - avg_cost) - fee
   const tradePnl = useMemo(() => {
@@ -174,6 +192,11 @@ export default function TxnPage() {
         fee: typeof vals.fee === "number" ? vals.fee : undefined,
         notes: vals.notes?.trim() || undefined,
       };
+      if (vals.action === 'ADJ' || vals.action === 'DIV' || vals.action === 'FEE') {
+        if (typeof vals.amount === 'number') {
+          (payload as any).amount = vals.amount;
+        }
+      }
 
       const exists = instOpts.some(i => i.ts_code === tsCode);
       if (!exists) {
@@ -378,12 +401,28 @@ export default function TxnPage() {
             <InputNumber controls={false} precision={6} style={{ width: "100%" }} />
           </Form.Item>
 
+          {(form.getFieldValue('action') === 'ADJ' || form.getFieldValue('type') === 'CASH') && (
+            <Form.Item
+              label={form.getFieldValue('type') === 'CASH' ? '金额（自动按单价1折算数量）' : '金额（正=入金，负=出金）'}
+              name="amount"
+              rules={[{ required: true, message: '请输入金额' }]}
+            >
+              <InputNumber controls={false} precision={2} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
+
           <Form.Item
             label="价格（DIV/FEE/ADJ 可留空）"
             name="price"
             rules={[{ type: "number", min: 0 }]}
           >
-            <InputNumber controls={false} precision={6} style={{ width: "100%" }} placeholder="如 4.560000" />
+            <InputNumber
+              controls={false}
+              precision={6}
+              style={{ width: "100%" }}
+              placeholder={form.getFieldValue('type') === 'CASH' ? '现金固定为 1' : '如 4.560000'}
+              disabled={form.getFieldValue('type') === 'CASH'}
+            />
           </Form.Item>
 
           <Form.Item label="费用（可选）" name="fee" rules={[{ type: "number", min: 0 }]}>

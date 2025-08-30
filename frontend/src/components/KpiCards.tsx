@@ -12,8 +12,16 @@ type Props = {
 export default function KpiCards({ marketValue, cost, pnl, ret, signals, priceFallback, dateText }: Props) {
   return (
     <Row gutter={[16, 16]}>
-      <Col xs={24} md={12} lg={8}>
-        <Card style={{ background: "linear-gradient(135deg,#67c1ff 0%,#1677ff 100%)", color: "#fff" }}>
+      <Col xs={24} md={12} lg={8} style={{ display: "flex" }}>
+        <Card
+          style={{
+            background: "linear-gradient(135deg,#67c1ff 0%,#1677ff 100%)",
+            color: "#fff",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           <Statistic title={<span style={{ color: "rgba(255,255,255,0.85)" }}>总资产（{dateText}）</span>}
                      value={marketValue}
                      formatter={(v) => <span style={{ color: "#fff", fontWeight: 700 }}>{fmtCny(Number(v))}</span>} />
@@ -28,16 +36,23 @@ export default function KpiCards({ marketValue, cost, pnl, ret, signals, priceFa
           </div>
         </Card>
       </Col>
-      <Col xs={24} md={12} lg={8}>
-        <Card>
-          <Statistic title="投入成本" value={fmtCny(cost)} />
-          <div style={{ marginTop: 8 }}>
-            <Statistic title="组合收益率" value={ret === null ? "-" : fmtPct(ret)} />
+      <Col xs={24} md={12} lg={8} style={{ display: "flex" }}>
+        <Card style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "2fr 1fr",
+              columnGap: 16,
+              alignItems: "end",
+            }}
+          >
+            <Statistic title="投入成本" value={fmtCny(cost)} style={{ minWidth: 0 }} />
+            <Statistic title="组合收益率" value={ret === null ? "-" : fmtPct(ret)} style={{ minWidth: 0 }} />
           </div>
         </Card>
       </Col>
-      <Col xs={24} md={12} lg={8}>
-        <Card>
+      <Col xs={24} md={12} lg={8} style={{ display: "flex" }}>
+        <Card style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", gap: 12 }}>
             <Statistic title="止盈信号" value={signals.stop_gain} />
             <Statistic title="超出目标范围（类别）" value={signals.overweight} />

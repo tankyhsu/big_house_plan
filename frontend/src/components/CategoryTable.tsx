@@ -5,8 +5,65 @@ import { fmtCny, fmtPct, formatNumber } from "../utils/format";
 
 // 头部 import 无需变
 
+type TreeRow = CategoryRow & { key?: string; children?: TreeRow[] };
+
 export default function CategoryTable({ data, loading }: { data: CategoryRow[]; loading: boolean }) {
-  const columns: ColumnsType<CategoryRow> = [
+  // 将平铺的类别行，按一级大类 name 分组为可展开的树形
+  // 父级行做汇总（target/actual/mv/cost/pnl/ret/overweight/suggest）
+  const treeData: TreeRow[] = (() => {
+    const byName = new Map<string, CategoryRow[]>();
+    (data || []).forEach((r) => {
+      const k = r.name || "";
+      if (!byName.has(k)) byName.set(k, []);
+      byName.get(k)!.push(r);
+    });
+
+    const res: TreeRow[] = [];
+    for (const [name, rows] of Array.from(byName.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+      // 子项按 sub_name 排序（空在前）
+      const children = rows
+        .slice()
+        .sort((a, b) => (a.sub_name || "").localeCompare(b.sub_name || ""))
+        .map((r) => ({ ...r, key: String(r.category_id) }));
+
+      // 汇总父级
+      const sum = (fn: (r: CategoryRow) => number) => rows.reduce((acc, r) => acc + (Number(fn(r)) || 0), 0);
+      const target_units = sum((r) => r.target_units);
+      const actual_units = sum((r) => r.actual_units);
+      const market_value = sum((r) => r.market_value);
+      const cost = sum((r) => r.cost);
+      const pnl = sum((r) => r.pnl);
+      const gap_units = target_units - actual_units;
+      const ret = cost > 0 ? pnl / cost : null;
+
+      // 使用默认带宽 20%（与说明一致）；如需精确可后续接入设置接口
+      const band = 0.2;
+      const lower = target_units * (1 - band);
+      const upper = target_units * (1 + band);
+      const overweight = actual_units < lower || actual_units > upper ? 1 : 0;
+
+      const parent: TreeRow = {
+        key: `grp:${name}`,
+        category_id: -1, // 占位，不用于 rowKey
+        name,
+        sub_name: "",
+        target_units,
+        actual_units,
+        gap_units,
+        market_value,
+        cost,
+        pnl,
+        ret,
+        overweight: overweight as 0 | 1,
+        suggest_units: Math.round(gap_units),
+        children,
+      } as TreeRow;
+      res.push(parent);
+    }
+    return res;
+  })();
+
+  const columns: ColumnsType<TreeRow> = [
     {
       title: "类别",
       dataIndex: "name",
@@ -89,11 +146,12 @@ export default function CategoryTable({ data, loading }: { data: CategoryRow[]; 
       </Typography.Paragraph>
       <Table
         size="small"
-        rowKey={(r) => String(r.category_id)}
-        columns={columns}
-        dataSource={data}
+        rowKey={(r) => (r as any).key || String((r as any).category_id)}
+        columns={columns as ColumnsType<any>}
+        dataSource={treeData as any}
         loading={loading}
         pagination={false}
+        expandable={{ defaultExpandAllRows: false }}
       />
     </>
   );

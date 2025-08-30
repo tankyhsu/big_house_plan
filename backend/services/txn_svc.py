@@ -110,13 +110,32 @@ def create_txn(data: dict, log: LogContext) -> dict:
                 raise ValueError("Sell exceeds current shares")
             position_repo.upsert_position(conn, ts_code, new_shares, new_cost, date)
 
-        # 3) 现金镜像（当且仅当：a) 标的不是现金；b) 动作为 BUY/SELL/DIV/FEE/ADJ）
+        # 3) 现金镜像 / 现金直接调整
         cfg = get_config()
         cash_code = str(cfg.get("cash_ts_code") or "CASH.CNY")
         # 查询当前标的类型，若为 CASH 则不做镜像
         inst_type = (instrument_repo.get_type(conn, ts_code) or "").upper()
         is_cash_inst = (inst_type == "CASH") or (ts_code == cash_code)
-        if not is_cash_inst:
+        if is_cash_inst and action == "ADJ":
+            # 直接调整现金头寸：amount>0 视为现金 BUY；amount<0 视为现金 SELL
+            amt_field = data.get("amount")
+            # 兼容：若前端未提供 amount，则尝试 shares*price；再退化为 shares
+            amt = float(amt_field) if amt_field is not None else (abs(float(data.get("shares") or 0.0)) * float(data.get("price") or 0.0))
+            if amt == 0:
+                amt = abs(float(data.get("shares") or 0.0))
+            if abs(amt) > 0:
+                cash_row = position_repo.get_position(conn, cash_code)
+                cash_old_shares, cash_old_cost = (cash_row["shares"], cash_row["avg_cost"]) if cash_row else (0.0, 0.0)
+                if amt > 0:
+                    c_new_shares = cash_old_shares + amt
+                    c_total_cost = cash_old_shares * cash_old_cost + amt * 1.0
+                    c_new_cost = (c_total_cost / c_new_shares) if c_new_shares > 0 else 0.0
+                    position_repo.upsert_position(conn, cash_code, c_new_shares, c_new_cost, date)
+                else:
+                    c_new_shares = round(cash_old_shares - abs(amt), 8)
+                    c_new_cost = 0.0 if abs(c_new_shares) < 1e-12 else cash_old_cost
+                    position_repo.upsert_position(conn, cash_code, c_new_shares, c_new_cost, date)
+        elif not is_cash_inst:
             # 现金镜像（由 domain engine 决策）
             mirror_action, mirror_abs_shares = compute_cash_mirror(action, data["shares"], price, fee, data.get("amount"))
 

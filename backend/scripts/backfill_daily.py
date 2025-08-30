@@ -159,15 +159,44 @@ def main():
                 filtered_codes = sorted(set(codes))
                 print(f"[backfill] bucket filter {sorted(buckets)} -> codes={len(filtered_codes)}")
 
+    def codes_need_sync(date_yyyymmdd: str, base_codes: Optional[list[str]] = None) -> list[str]:
+        """Return codes that do NOT yet have a price row for the date.
+        - If base_codes is None, use all active, non-CASH instruments.
+        - Checks existence at exact date (not on-or-before).
+        """
+        date_dash = yyyyMMdd_to_dash(date_yyyymmdd)
+        with get_conn() as conn:
+            if base_codes is None:
+                rows = conn.execute("SELECT ts_code, COALESCE(type,'') AS t, active FROM instrument").fetchall()
+                base = [r['ts_code'] for r in rows if int(r['active']) == 1 and (r['t'] or '').upper() != 'CASH']
+            else:
+                base = list(base_codes)
+            if not base:
+                return []
+            # Fetch codes that already have price on that date
+            placeholders = ",".join(["?"] * len(base))
+            have_rows = conn.execute(
+                f"SELECT DISTINCT ts_code FROM price_eod WHERE trade_date=? AND ts_code IN ({placeholders})",
+                (date_dash, *base),
+            ).fetchall()
+            have = {r['ts_code'] for r in have_rows}
+            missing = [c for c in base if c not in have]
+            return sorted(set(missing))
+
     total = 0
     for ymd in yyyymmdd_iter(start, end):
         dash_date = yyyyMMdd_to_dash(ymd)
         print(f"[backfill] === {ymd} ({dash_date}) ===")
         try:
             if args.sync and provider is not None:
-                log_sync = LogContext("BACKFILL_SYNC")
-                res = orch_sync(ymd, provider, log_sync, ts_codes=filtered_codes)
-                print(f"[backfill] sync(orch) result: {res}")
+                # Only sync codes that don't already have a row for this date
+                target_codes = codes_need_sync(ymd, base_codes=(filtered_codes or None))
+                if not target_codes:
+                    print("[backfill] prices exist for all targets; skip sync")
+                else:
+                    log_sync = LogContext("BACKFILL_SYNC")
+                    res = orch_sync(ymd, provider, log_sync, ts_codes=target_codes)
+                    print(f"[backfill] sync(orch) result: {res} (requested={len(target_codes)})")
             log_calc = LogContext("BACKFILL_CALC")
             calc(ymd, log_calc)
             print(f"[backfill] calc done for {dash_date}")

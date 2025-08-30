@@ -46,6 +46,30 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
         else:
             stock_like.append(code)
 
+    # Pre-filter: if we already have a price row for this exact date, skip fetching for that code
+    # This reduces network calls significantly when re-running backfills.
+    if stock_like or etf_like or fund_like:
+        date_dash = yyyyMMdd_to_dash(trade_date)
+        with get_conn() as conn:
+            pools: List[str] = list(set(stock_like + etf_like + fund_like))
+            if pools:
+                placeholders = ",".join(["?"] * len(pools))
+                rows = conn.execute(
+                    f"SELECT DISTINCT ts_code FROM price_eod WHERE trade_date=? AND ts_code IN ({placeholders})",
+                    (date_dash, *pools),
+                ).fetchall()
+                have = {r["ts_code"] for r in rows}
+                before_counts = (len(stock_like), len(etf_like), len(fund_like))
+                skipped_codes = [c for c in pools if c in have]
+                stock_like = [c for c in stock_like if c not in have]
+                etf_like = [c for c in etf_like if c not in have]
+                fund_like = [c for c in fund_like if c not in have]
+                after_counts = (len(stock_like), len(etf_like), len(fund_like))
+                total_skipped += (before_counts[0] - after_counts[0]) + (before_counts[1] - after_counts[1]) + (before_counts[2] - after_counts[2])
+                if skipped_codes:
+                    sample = ", ".join(skipped_codes[:8])
+                    print(f"[orchestrator] {trade_date} skip existing: {len(skipped_codes)} codes (e.g. {sample})")
+
     # STOCK: use daily with trade_cal fallback
     if stock_like:
         used_date_stock = trade_date

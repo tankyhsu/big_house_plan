@@ -26,6 +26,12 @@ export default function PositionEditor() {
   const [categories, setCategories] = useState<CategoryLite[]>([]);
   const [searching, setSearching] = useState(false);
   const searchTimer = useRef<number | null>(null);
+  // 完整 ts_code 格式：6 位数字 + 点 + 2~3 位字母（如 510300.SH / 110011.OF）
+  const TS_CODE_FULL_RE = /^\d{6}\.[A-Za-z]{2,3}$/i;
+
+  // 过滤：类别 + 全局搜索
+  const [catFilter, setCatFilter] = useState<number | undefined>(undefined);
+  const [globalQuery, setGlobalQuery] = useState<string>("");
 
   const load = async (incZero = includeZero) => {
     setLoading(true);
@@ -81,11 +87,13 @@ export default function PositionEditor() {
     }, 250);
   };
 
-  // 判断是否为新代码（不在现有 instrument 列表中）
+  // 判断是否为新代码（不在现有 instrument 列表中）。
+  // 仅当输入满足完整 ts_code 格式时才进行判断，避免在未输入完整前误判。
   const isNewInstrument = () => {
     const v = createForm.getFieldValue("ts_code");
     if (!v) return false;
-    const code = typeof v === "string" ? v : v?.value;
+    const code = (typeof v === "string" ? v : v?.value)?.trim();
+    if (!TS_CODE_FULL_RE.test(code || "")) return false;
     return !instOpts.some((i) => i.ts_code === code);
   };
 
@@ -154,21 +162,22 @@ export default function PositionEditor() {
 
   // 新代码时：自动从 TuShare 查询基础信息与建仓日的价格/净值（如提供）
   const [refPriceDate, setRefPriceDate] = useState<string | null>(null);
-  const TS_CODE_RE = /^[0-9A-Za-z.\-]+$/;
   useEffect(() => {
     const tsVal = createForm.getFieldValue("ts_code");
     const code: string | undefined = (typeof tsVal === "string" ? tsVal : tsVal?.value)?.trim();
     if (!code) return;
     if (!isNewInstrument()) return; // 仅新代码时触发
-    // 代码不符合正则时，不触发 TuShare 查询，避免无效请求
-    if (!TS_CODE_RE.test(code)) { setRefPriceDate(null); return; }
+    // 未形成完整 ts_code 时，不触发 TuShare 查询，避免无效请求
+    if (!TS_CODE_FULL_RE.test(code)) { setRefPriceDate(null); return; }
     const dt = createForm.getFieldValue("date");
     const ymd: string | undefined = dt ? dt.format("YYYYMMDD") : undefined;
     lookupInstrument(code, ymd).then(info => {
-      if (info?.name && !createForm.getFieldValue("inst_name")) {
+      // 覆盖名称：当用户未手动编辑“名称”时，总是使用查到的名称（即使已有旧值）
+      if (info?.name && !createForm.isFieldTouched("inst_name")) {
         createForm.setFieldsValue({ inst_name: info.name });
       }
-      if (info?.type && !createForm.getFieldValue("inst_type")) {
+      // 如果从 TuShare 成功识别出类型，且用户尚未手动修改“类型”，则自动选择
+      if (info?.type && !createForm.isFieldTouched("inst_type")) {
         createForm.setFieldsValue({ inst_type: info.type });
       }
       // 仅在用户未手动编辑过均价，且表单中当前未填值时，才回填参考价
@@ -223,6 +232,7 @@ export default function PositionEditor() {
     {
       title: "类别",
       dataIndex: "cat_name",
+      sorter: (a, b) => `${a.cat_name || ''}/${a.cat_sub || ''}`.localeCompare(`${b.cat_name || ''}/${b.cat_sub || ''}`),
       render: (t, r) => (
         <>
           {t}
@@ -233,6 +243,7 @@ export default function PositionEditor() {
     {
       title: "代码/名称",
       dataIndex: "ts_code",
+      sorter: (a, b) => (a.ts_code || '').localeCompare(b.ts_code || ''),
       render: (t, r) => (
         <div>
           <strong>{t}</strong>
@@ -244,24 +255,28 @@ export default function PositionEditor() {
       title: "持仓份额",
       dataIndex: "shares",
       align: "right",
+      sorter: (a, b) => Number(a.shares || 0) - Number(b.shares || 0),
       render: (_, record) => record.shares,
     },
     {
       title: "持仓均价",
       dataIndex: "avg_cost",
       align: "right",
+      sorter: (a, b) => Number(a.avg_cost || 0) - Number(b.avg_cost || 0),
       render: (_, record) => (record.avg_cost ?? 0).toFixed(4),
     },
     {
       title: "最后更新",
       dataIndex: "last_update",
       width: 100,
+      sorter: (a, b) => (a.last_update || '').localeCompare(b.last_update || ''),
       render: (_: any, record) => record.last_update || "-",
     },
     {
       title: "建仓时间",
       dataIndex: "opening_date",
       width: 100,
+      sorter: (a, b) => (a.opening_date || '').localeCompare(b.opening_date || ''),
       render: (_: any, record) => record.opening_date || "-",
     },
     {
@@ -269,6 +284,13 @@ export default function PositionEditor() {
       dataIndex: "irr",
       align: "right",
       width: 180,
+      sorter: (a, b) => {
+        const ia = irrMap[a.ts_code]?.val;
+        const ib = irrMap[b.ts_code]?.val;
+        const va = typeof ia === 'number' ? ia : Number.NEGATIVE_INFINITY;
+        const vb = typeof ib === 'number' ? ib : Number.NEGATIVE_INFINITY;
+        return va - vb;
+      },
       render: (_: any, r: PositionRaw) => {
         const item = irrMap[r.ts_code];
         const irr = item?.val;
@@ -325,6 +347,22 @@ export default function PositionEditor() {
 
   // ====== 新增持仓 Modal 省略：沿用你现有实现 ======
 
+  // 应用过滤后的数据
+  const filteredData = useMemo(() => {
+    const q = (globalQuery || "").trim().toLowerCase();
+    return (data || []).filter((r) => {
+      const okCat = catFilter ? Number(r.category_id) === Number(catFilter) : true;
+      if (!q) return okCat;
+      const hay = [
+        r.ts_code || "",
+        r.inst_name || "",
+        r.cat_name || "",
+        r.cat_sub || "",
+      ].join(" ").toLowerCase();
+      return okCat && hay.includes(q);
+    });
+  }, [data, catFilter, globalQuery]);
+
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Typography.Title level={3} style={{ margin: 0 }}>持仓编辑</Typography.Title>
@@ -332,7 +370,7 @@ export default function PositionEditor() {
         用于初始化或纠错。日常变动请使用“交易”功能，便于复盘与审计。
       </Typography.Paragraph>
 
-      {/* 顶部操作条：刷新 + 新增持仓 + 开关 + 批量清理 */}
+      {/* 顶部操作条：刷新 + 新增持仓 + 开关 + 批量清理 + 过滤 */}
       <Space wrap>
         <Button onClick={() => load()}>刷新</Button>
         <Button type="primary" onClick={() => setCreateOpen(true)}>新增持仓</Button>
@@ -343,13 +381,32 @@ export default function PositionEditor() {
         <Popconfirm title="确定清理所有 0 仓位吗？" onConfirm={onCleanupZero}>
           <Button danger>清理 0 仓位</Button>
         </Popconfirm>
+        <Divider type="vertical" />
+        <Space align="center" wrap>
+          <span>类别</span>
+          <Select
+            style={{ minWidth: 220 }}
+            placeholder="全部类别"
+            allowClear
+            value={catFilter}
+            onChange={(v) => setCatFilter(v)}
+            options={categories.map((c) => ({ value: c.id, label: `${c.name}${c.sub_name ? ` / ${c.sub_name}` : ""}` }))}
+          />
+          <Input
+            style={{ width: 260 }}
+            placeholder="搜索 代码/名称/类别"
+            allowClear
+            value={globalQuery}
+            onChange={(e) => setGlobalQuery(e.target.value)}
+          />
+        </Space>
       </Space>
 
       <Table
         size="small"
         rowKey={(r) => r.ts_code}
         columns={columns}
-        dataSource={data}
+        dataSource={filteredData}
         loading={loading}
         pagination={{ pageSize: 15 }}
         locale={{
@@ -466,6 +523,11 @@ export default function PositionEditor() {
           <Form.Item label="生效日期" name="date" rules={[{ required: true }]}>
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
+          {modalMode === 'edit' && (
+            <Form.Item label="建仓日期" name="opening_date_edit" tooltip="用于年化收益等计算的起点日期（可选）">
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </Space>
