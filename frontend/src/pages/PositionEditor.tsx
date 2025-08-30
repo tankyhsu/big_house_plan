@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert, Switch, Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Tooltip, Tag  } from "antd";
+import { Tooltip } from "antd";
 import { fetchIrrBatch } from "../api/hooks";
 import dayjs from "dayjs";
 import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
@@ -18,7 +18,7 @@ export default function PositionEditor() {
   // 新增持仓 Modal
   const [createOpen, setCreateOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
-  const [editingRowModal, setEditingRowModal] = useState<PositionRaw | null>(null);
+  const [, setEditingRowModal] = useState<PositionRaw | null>(null);
   const [createForm] = Form.useForm();
 
   // 标的 & 类别（用于登记新标的/下拉选择）

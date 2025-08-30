@@ -53,16 +53,16 @@ def on_startup():
     ensure_log_schema()
     ensure_default_config()
 
-    def _sync_once():
-        try:
-            today = datetime.now().strftime("%Y%m%d")
-            log = LogContext("SYNC_ON_STARTUP")
-            sync_prices_tushare(today, log)  # 无 token 时会返回 reason=no_token
-            log.write("OK")
-        except Exception as e:
-            LogContext("SYNC_ON_STARTUP").write("ERROR", str(e))
+    # def _sync_once():
+    #     try:
+    #         today = datetime.now().strftime("%Y%m%d")
+    #         log = LogContext("SYNC_ON_STARTUP")
+    #         sync_prices_tushare(today, log)  # 无 token 时会返回 reason=no_token
+    #         log.write("OK")
+    #     except Exception as e:
+    #         LogContext("SYNC_ON_STARTUP").write("ERROR", str(e))
 
-    Thread(target=_sync_once, daemon=True).start()
+    # Thread(target=_sync_once, daemon=True).start()
 
 # -----------------------------------------------------------------------------
 # 基础：健康检查 / 版本
@@ -102,6 +102,48 @@ def api_dashboard_aggregate(
     try:
         items = aggregate_kpi(start, end, period)
         return {"period": period, "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================================================
+# Dashboard/Series: 持仓市值历史（单个/多个）
+# =============================================================================
+@app.get("/api/series/position")
+def api_series_position(
+    start: str = Query(..., pattern=r"^\d{8}$"),
+    end: str = Query(..., pattern=r"^\d{8}$"),
+    ts_codes: str = Query(..., description="逗号分隔的 ts_code 列表"),
+):
+    try:
+        if not ts_codes:
+            return {"items": []}
+        # 参数规范化
+        codes = [c.strip() for c in ts_codes.split(',') if c and c.strip()]
+        if not codes:
+            return {"items": []}
+        sd = f"{start[0:4]}-{start[4:6]}-{start[6:8]}"
+        ed = f"{end[0:4]}-{end[4:6]}-{end[6:8]}"
+        placeholders = ",".join(["?"] * len(codes))
+        sql = f"""
+            SELECT pd.trade_date AS date, pd.ts_code, pd.market_value, i.name
+            FROM portfolio_daily pd
+            JOIN instrument i ON i.ts_code = pd.ts_code
+            WHERE pd.trade_date BETWEEN ? AND ?
+              AND pd.ts_code IN ({placeholders})
+            ORDER BY pd.trade_date ASC
+        """
+        with get_conn() as conn:
+            rows = conn.execute(sql, (sd, ed, *codes)).fetchall()
+            items = [
+                {
+                    "date": r["date"],
+                    "ts_code": r["ts_code"],
+                    "name": r["name"],
+                    "market_value": float(r["market_value"] or 0.0),
+                }
+                for r in rows
+            ]
+        return {"items": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

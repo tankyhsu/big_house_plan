@@ -1,22 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { Card, DatePicker, Space, Button } from "antd";
 import dayjs, { Dayjs } from "dayjs";
-import { fetchDashboard, fetchDashboardAgg } from "../../api/hooks";
+import { fetchDashboardAgg } from "../../api/hooks";
 
-function genDateRange(start: Dayjs, end: Dayjs, stepDays: number = 1) {
-  const arr: string[] = [];
-  let d = start.startOf("day");
-  const last = end.startOf("day");
-  while (d.isBefore(last) || d.isSame(last, "day")) {
-    arr.push(d.format("YYYYMMDD"));
-    d = d.add(stepDays, "day");
-  }
-  // 确保末尾日期包含在内（即便 step 跨过了）
-  const lastStr = last.format("YYYYMMDD");
-  if (arr[arr.length - 1] !== lastStr) arr.push(lastStr);
-  return arr;
-}
+// 备用：按步长生成日期序列（当前未使用）
 
 // 金额显示友好化（万/亿）
 function formatMoney(n: number) {

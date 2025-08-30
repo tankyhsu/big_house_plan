@@ -10,6 +10,11 @@ export async function fetchDashboardAgg(startYmd: string, endYmd: string, period
   const { data } = await client.get("/api/dashboard/aggregate", { params: { start: startYmd, end: endYmd, period } });
   return data as { period: string; items: { date: string; market_value: number; cost: number; unrealized_pnl: number; ret: number | null; }[] };
 }
+export async function fetchPositionSeries(startYmd: string, endYmd: string, codes: string[]) {
+  const ts_codes = codes.join(',');
+  const { data } = await client.get("/api/series/position", { params: { start: startYmd, end: endYmd, ts_codes } });
+  return data as { items: { date: string; ts_code: string; name: string; market_value: number }[] };
+}
 export async function fetchCategory(date: string): Promise<CategoryRow[]> {
   const { data } = await client.get("/api/category", { params: { date } });
   return data;

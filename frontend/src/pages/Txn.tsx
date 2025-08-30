@@ -393,13 +393,15 @@ export default function TxnPage() {
             </Space>
           </div>
 
-          <Form.Item
-            label="数量（份/股）"
-            name="shares"
-            rules={[{ required: true, message: "请输入数量" }, { type: "number", min: 0.000001, message: "必须 > 0" }]}
-          >
-            <InputNumber controls={false} precision={6} style={{ width: "100%" }} />
-          </Form.Item>
+          {form.getFieldValue('type') !== 'CASH' && (
+            <Form.Item
+              label="数量（份/股）"
+              name="shares"
+              rules={[{ required: true, message: "请输入数量" }, { type: "number", min: 0.000001, message: "必须 > 0" }]}
+            >
+              <InputNumber controls={false} precision={6} style={{ width: "100%" }} />
+            </Form.Item>
+          )}
 
           {(form.getFieldValue('action') === 'ADJ' || form.getFieldValue('type') === 'CASH') && (
             <Form.Item
@@ -411,19 +413,20 @@ export default function TxnPage() {
             </Form.Item>
           )}
 
-          <Form.Item
-            label="价格（DIV/FEE/ADJ 可留空）"
-            name="price"
-            rules={[{ type: "number", min: 0 }]}
-          >
-            <InputNumber
-              controls={false}
-              precision={6}
-              style={{ width: "100%" }}
-              placeholder={form.getFieldValue('type') === 'CASH' ? '现金固定为 1' : '如 4.560000'}
-              disabled={form.getFieldValue('type') === 'CASH'}
-            />
-          </Form.Item>
+          {form.getFieldValue('type') !== 'CASH' && (
+            <Form.Item
+              label="价格（DIV/FEE/ADJ 可留空）"
+              name="price"
+              rules={[{ type: "number", min: 0 }]}
+            >
+              <InputNumber
+                controls={false}
+                precision={6}
+                style={{ width: "100%" }}
+                placeholder="如 4.560000"
+              />
+            </Form.Item>
+          )}
 
           <Form.Item label="费用（可选）" name="fee" rules={[{ type: "number", min: 0 }]}>
             <InputNumber controls={false} precision={2} style={{ width: "100%" }} placeholder="如 1.50" />

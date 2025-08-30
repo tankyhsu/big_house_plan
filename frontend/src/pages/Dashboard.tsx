@@ -6,6 +6,7 @@ import CategoryTable from "../components/CategoryTable";
 import PositionTable from "../components/PositionTable";
 import PositionPie from "../components/charts/PositionPie";
 import TotalAssetsLine from "../components/charts/TotalAssetsLine";
+import PositionSeriesPanel from "../components/charts/PositionSeriesPanel";
 import { fetchDashboard, fetchCategory, fetchPosition, postCalc, postSyncPrices } from "../api/hooks";
 import type { CategoryRow, PositionRow } from "../api/types";
 import { dashedToYmd } from "../utils/format";
@@ -83,6 +84,10 @@ export default function Dashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24} md={30}><PositionPie /></Col>
         <Col xs={24} md={30}><TotalAssetsLine /></Col>
+      </Row>
+
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={60}><PositionSeriesPanel /></Col>
       </Row>
 
       <CategoryTable data={cat} loading={loading} />
