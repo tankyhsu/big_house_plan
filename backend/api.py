@@ -341,6 +341,54 @@ def api_txn_list(page: int = 1, size: int = 20):
     total, items = list_txn(page, size)
     return {"total": total, "items": items}
 
+@app.get("/api/txn/range")
+def api_txn_range(
+    start: str = Query(..., pattern=r"^\d{8}$"),
+    end: str = Query(..., pattern=r"^\d{8}$"),
+    ts_codes: str | None = Query(None, description="逗号分隔，可选：限定标的"),
+):
+    """
+    区间内交易流水（可按标的过滤）。
+    返回 items: [{date: YYYY-MM-DD, ts_code, name, action, shares, price, amount, fee}]
+    """
+    try:
+        sd = f"{start[0:4]}-{start[4:6]}-{start[6:8]}"
+        ed = f"{end[0:4]}-{end[4:6]}-{end[6:8]}"
+        codes: list[str] = []
+        if ts_codes:
+            codes = [c.strip() for c in ts_codes.split(',') if c and c.strip()]
+
+        base_sql = (
+            "SELECT t.trade_date AS date, t.ts_code, i.name AS name, t.action, t.shares, t.price, t.amount, t.fee "
+            "FROM txn t LEFT JOIN instrument i ON i.ts_code = t.ts_code "
+            "WHERE t.trade_date >= ? AND t.trade_date <= ?"
+        )
+        params: list[object] = [sd, ed]
+        if codes:
+            placeholders = ",".join(["?"] * len(codes))
+            base_sql += f" AND t.ts_code IN ({placeholders})"
+            params.extend(codes)
+        base_sql += " ORDER BY t.trade_date ASC, t.id ASC"
+
+        with get_conn() as conn:
+            rows = conn.execute(base_sql, params).fetchall()
+            items = [
+                {
+                    "date": r["date"],
+                    "ts_code": r["ts_code"],
+                    "name": r["name"],
+                    "action": r["action"],
+                    "shares": float(r["shares"] or 0.0),
+                    "price": (float(r["price"]) if r["price"] is not None else None),
+                    "amount": (float(r["amount"]) if r["amount"] is not None else None),
+                    "fee": (float(r["fee"]) if r["fee"] is not None else None),
+                }
+                for r in rows
+            ]
+        return {"items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/txn/create", status_code=201)
 def api_txn_create(body: TxnCreate):
     """

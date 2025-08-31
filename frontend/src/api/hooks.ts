@@ -72,6 +72,12 @@ export async function fetchTxnList(page = 1, size = 20): Promise<{ total: number
   return data;
 }
 
+export async function fetchTxnRange(startYmd: string, endYmd: string, codes?: string[]) {
+  const ts_codes = codes && codes.length > 0 ? codes.join(',') : undefined;
+  const { data } = await client.get("/api/txn/range", { params: { start: startYmd, end: endYmd, ts_codes } });
+  return data as { items: { date: string; ts_code: string; name?: string | null; action: "BUY"|"SELL"|"DIV"|"FEE"|"ADJ"; shares: number; price: number | null; amount: number | null; fee: number | null; }[] };
+}
+
 import type { CategoryLite, InstrumentLite } from "./types";
 
 export async function fetchInstruments(q?: string): Promise<InstrumentLite[]> {
