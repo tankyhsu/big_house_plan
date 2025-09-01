@@ -1,156 +1,159 @@
 # Portfolio System UI
 
-一个基于 **FastAPI + React(antd)** 的投资组合可视化与管理界面。  
-后端使用 SQLite 存储，支持：类别/标的映射、交易流水、每日快照、信号（止盈/配置偏离）与详细操作日志。  
-前端提供 Dashboard、持仓编辑、交易录入等页面。
+一个基于 FastAPI + React(antd) 的投资组合可视化与管理界面。
+后端使用 SQLite 存储，支持：类别/标的映射、交易流水、每日快照、技术指标、信号（止盈/配置偏离）与操作日志；
+前端包含 Dashboard、复盘、持仓编辑、交易录入、设置等页面。
 
 ---
 
-## 快速开始（最简 3 步）
+## 快速开始
 
-> 需要已安装：**Python 3.10+**、**Node.js 18+（或 20+）**、**npm 9+**。
+前置要求：Python 3.10+、Node.js 18+/20+、npm 9+
 
 ```bash
-# 克隆本仓库后，执行一键脚本（macOS/Linux）
+# macOS / Linux（或 Windows 下的 Git Bash / WSL）
 bash scripts/dev.sh
-# 或 Windows PowerShell
-scripts\dev.ps1
 ```
 
-打开前端开发地址：`http://127.0.0.1:5173`
+- 前端开发地址：http://127.0.0.1:5173
+- 后端 API 文档：http://127.0.0.1:8000/docs
 
-> 后端 API 文档：`http://127.0.0.1:8000/docs`
-
----
-
-## 日常开发快速启动（忽略依赖安装）
-
-如果依赖已经安装过，可以直接运行以下脚本快速启动：
+快速启动（跳过依赖安装）：
 
 ```bash
-# macOS / Linux
 bash scripts/dev-fast.sh
-# Windows PowerShell
-scripts\dev-fast.ps1
-```
-
-该脚本仅启动前后端，不会重新安装依赖或生成配置文件。
-
----
-
-## 🧭 目录结构
-
-```
-.
-├── backend/                # FastAPI 后端
-│   ├── api.py              # 路由 & 接口定义
-│   ├── services/           # 业务逻辑拆分（position, transaction, signal 等）
-│   ├── repository/         # DB 访问与持久化
-│   ├── analytics/          # 计算与分析逻辑
-│   ├── logs.py             # 日志统一入口
-│   └── db.py               # SQLite 连接与基础 CRUD
-├── frontend/               # React + Vite + TypeScript 前端
-│   ├── src/
-│   │   ├── pages/          # 页面：Dashboard, Position, Trade ...
-│   │   ├── components/     # 公共组件
-│   │   ├── services/       # 前端 API 调用
-│   │   └── ...
-│   └── vite.config.ts
-├── requirements.txt        # 后端依赖清单
-├── package.json            # 前端依赖清单
-├── scripts/                # 跨平台开发脚本
-│   ├── dev.sh
-│   ├── dev.ps1
-│   ├── dev-fast.sh
-│   └── dev-fast.ps1
-├── seeds/                  # 种子数据（CSV）
-├── IMPLEMENTATION_PLAN.md  # 实施/演进计划
-└── README.md
 ```
 
 ---
 
-## 依赖说明
+## 手动运行
 
-### 后端（Python）
-- **FastAPI**
-- **uvicorn**
-- **pydantic v2**
-- **pandas**
-- **PyYAML**
-
-安装：
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-python -m pip install -r requirements.txt
-```
-
-### 前端（Node）
-- **Vite + React + TypeScript**
-- **Ant Design v5**
-- **axios**
-- **dayjs**
-- **echarts**
-- **react-router-dom**
-
-安装：
-```bash
-cd frontend
-npm i
-```
-
-环境变量：
-```
-VITE_API_BASE=http://127.0.0.1:8000
-```
-
----
-
-## 运行
-
-### 方式 A：一键脚本（推荐）
-```bash
-bash scripts/dev.sh          # macOS / Linux
-scripts\dev.ps1             # Windows
-```
-
-### 方式 B：快速脚本（跳过依赖安装）
-```bash
-bash scripts/dev-fast.sh     # macOS / Linux
-scripts\dev-fast.ps1        # Windows
-```
-
-### 方式 C：手动
 ```bash
 # 后端
-source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate    # Windows(Git Bash): source .venv/Scripts/activate
+python -m pip install -U pip
+python -m pip install -r requirements.txt
 uvicorn backend.api:app --reload --port 8000
 
 # 前端
 cd frontend
+npm i
+echo "VITE_API_BASE=http://127.0.0.1:8000" > .env   # 首次
 npm run dev
 ```
 
 ---
 
-## 初始化数据
+## 目录结构
 
-```bash
-# 导入种子数据
-curl -X POST 'http://127.0.0.1:8000/api/seed/load'   -H 'Content-Type: application/json'   -d '{"categories_csv":"seeds/categories.csv","instruments_csv":"seeds/instruments.csv"}'
+```
+.
+├── backend/                  # FastAPI 后端
+│   ├── api.py                # 路由 & 接口定义
+│   ├── services/             # 业务逻辑（calc/pricing/analytics/position/txn 等）
+│   ├── repository/           # DB 读写封装
+│   ├── providers/            # 第三方数据源（TuShare 包装）
+│   ├── domain/               # 领域模型/交易引擎
+│   ├── scripts/              # 后端维护脚本
+│   ├── tests/                # pytest 测试
+│   ├── logs.py               # 操作日志（operation_log 表）
+│   └── db.py                 # SQLite 连接与路径解析
+├── frontend/                 # React + Vite + TypeScript 前端
+│   ├── src/
+│   │   ├── pages/            # Dashboard / 复盘 / 持仓编辑 / 交易 / 设置
+│   │   ├── components/       # 图表与通用组件（ECharts K 线、指标等）
+│   │   ├── api/              # 前端 API 客户端与类型
+│   │   └── utils/            # 工具函数
+│   └── vite.config.ts
+├── scripts/                  # 启动脚本（bash）
+│   ├── dev.sh
+│   └── dev-fast.sh
+├── seeds/                    # CSV 种子数据（categories/instruments）
+├── schema.sql                # 数据库结构
+├── requirements.txt          # 后端依赖
+├── config.yaml               # 本地配置（dev.sh 首次会生成）
+├── portfolio.py              # 可选：CLI 工具（初始化/同步/计算/报表）
+└── README.md
 ```
 
 ---
 
-## 前端页面
+## 配置说明（config.yaml）
 
-- Dashboard：资产概览、类别分布、持仓表
-- 持仓编辑：直接修改底仓
-- 交易：流水表 + 新增交易弹窗（支持新代码自动登记）
+`bash scripts/dev.sh` 首次运行会在项目根生成默认 `config.yaml`。
+
+- db_path: SQLite 文件路径（默认 `./portfolio.db`）
+- unit_amount, stop_gain_pct, overweight_band, ma_short, ma_long, ma_risk
+- tushare_token: TuShare 令牌（留空则跳过价格同步）
+- cash_ts_code: 现金镜像用代码（默认 `CASH.CNY`）
+- tushare_fund_rate_per_min: TuShare 基金接口限速（每分钟最大调用数）
+
+高级：也可通过环境变量 `PORT_DB_PATH` 覆盖数据库路径；当 `APP_ENV=test` 或处于 pytest 运行时会优先读取 `test_db_path`。
+
+---
+
+## 常用 API（后端）
+
+- 健康检查：`GET /health`
+- Dashboard 概览：`GET /api/dashboard?date=YYYYMMDD`
+- 聚合 KPI：`GET /api/dashboard/aggregate?start=YYYYMMDD&end=YYYYMMDD&period=day|week|month`
+- K 线数据与详情：`GET /api/instrument/detail?ts_code=...`
+- 交易流水：`GET /api/txn/list`、`GET /api/txn/range?start=...&end=...`
+- 导入种子：`POST /api/seed/load { categories_csv, instruments_csv }`
+- 同步价格（TuShare）：`POST /api/sync-prices { date?:YYYYMMDD, recalc?:bool }`
+- 操作日志查询：`GET /api/logs/search`
+
+完整接口可在 http://127.0.0.1:8000/docs 查看。
+
+---
+
+## 初始化与数据准备
+
+方式 A：通过 API 导入种子（推荐）
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/api/seed/load' \
+  -H 'Content-Type: application/json' \
+  -d '{"categories_csv":"seeds/categories.csv","instruments_csv":"seeds/instruments.csv"}'
+```
+
+方式 B：使用 CLI（可选）
+
+```bash
+python portfolio.py init              # 初始化 schema 并导入 seeds
+python portfolio.py sync-prices      # 需要在 config.yaml 配置 tushare_token
+python portfolio.py calc -d 20250101 # 重算指定交易日
+```
+
+---
+
+## 前端功能
+
+- Dashboard：资产概览、类别分布、持仓表、资产曲线
+- 复盘分析：多标的对比、标准化/指数化曲线
+- 持仓编辑：期初持仓设置、手动调整、清理 0 持仓
+- 交易记录：流水查询与录入
+- 设置：系统配置（阈值、TuShare Token、现金镜像等）
+
+---
+
+## 测试与质量
+
+- 后端测试：在项目根运行 `pytest`（目录：`backend/tests/`）
+- 前端 ESLint：`cd frontend && npm run lint`
+
+---
+
+## 注意事项
+
+- 令牌等敏感信息仅保存在本地 `config.yaml`，不要提交到仓库。
+- 前端后端通过 `frontend/.env` 的 `VITE_API_BASE` 指定后端地址。
+- 数据库路径可在 `config.yaml` 中通过 `db_path` 配置，避免提交本地 DB 文件。
 
 ---
 
 ## License
+
 私有项目，勿外传。
+

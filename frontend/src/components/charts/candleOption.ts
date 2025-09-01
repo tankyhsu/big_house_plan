@@ -98,7 +98,7 @@ export function buildCandleOption(params: {
   const series: any[] = [];
 
   const pricePanel = panels.find(p => p.key === 'price')!;
-  grids.push({ left: leftPad, right: 24, top: pricePanel.top, height: pricePanel.height, containLabel: false });
+  grids.push({ left: leftPad, right: 24, top: pricePanel.top, height: pricePanel.height, containLabel: false, show: true, borderColor: '#e5e7eb', borderWidth: 1 });
   xAxes.push({ gridIndex: 0, type: 'category', data: dates, boundaryGap: false, axisLine: { onZero: false } });
   yAxes.push({ gridIndex: 0, scale: true, splitNumber: 4, name: '价格', nameLocation: 'middle', nameGap: 70, nameTextStyle: { color: '#667085' }, axisLabel: { align: 'right', margin: 6 } });
   series.push({ type: 'candlestick', name: tsCode, data: kValues, itemStyle: { color: upColor, color0: downColor, borderColor: upColor, borderColor0: downColor }, xAxisIndex: 0, yAxisIndex: 0 });
@@ -113,7 +113,7 @@ export function buildCandleOption(params: {
   function addPanelGrid(panelKey: 'vol'|'macd'|'kdj'|'bias') {
     const p = panels.find(pp => pp.key === panelKey);
     if (!p) return null;
-    grids.push({ left: leftPad, right: 24, top: p.top, height: p.height, containLabel: false });
+    grids.push({ left: leftPad, right: 24, top: p.top, height: p.height, containLabel: false, show: true, borderColor: '#e5e7eb', borderWidth: 1 });
     xAxes.push({ gridIndex: panelIdx, type: 'category', data: dates, boundaryGap: false, axisLabel: { show: false }, axisTick: { show: false } });
     const nameMap: Record<string,string> = { vol: '成交量', macd: 'MACD', kdj: 'KDJ', bias: 'BIAS' };
     yAxes.push({ gridIndex: panelIdx, scale: true, splitNumber: 2, name: nameMap[panelKey], nameLocation: 'middle', nameGap: 70, nameTextStyle: { color: '#667085' }, axisLabel: { align: 'right', margin: 6 } });
