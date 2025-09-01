@@ -125,7 +125,7 @@ export default function PositionSeriesPanel({ title, defaultNormalize = false }:
           <Switch size="small" checked={normalize} onChange={setNormalize} />
         </Space>
       }
-      bodyStyle={{ padding: 12 }}
+      styles={{ body: { padding: 12 } }}
       loading={loading}
     >
       <Space direction="vertical" style={{ width: "100%" }} size={8}>

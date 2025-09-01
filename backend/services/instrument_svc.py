@@ -87,3 +87,14 @@ def seed_load(categories_csv: str, instruments_csv: str, log: LogContext) -> dic
 
     log.set_after({"created_category": created_cat, "created_instrument": created_ins})
     return {"created_category": created_cat, "created_instrument": created_ins}
+
+
+def get_instrument_detail(ts_code: str) -> dict | None:
+    with get_conn() as conn:
+        row = instrument_repo.get_one(conn, ts_code)
+        return dict(row) if row else None
+
+
+def edit_instrument(ts_code: str, name: str, category_id: int, active: bool, sec_type: str | None, log: LogContext):
+    """编辑标的基础信息（等价于 upsert）。"""
+    create_instrument(ts_code, name, category_id, active, log, sec_type=sec_type)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, DatePicker, Flex, message, Space, Row, Col } from "antd";
+import { Button, DatePicker, Flex, message, Space, Row, Col, Card } from "antd";
 import dayjs from "dayjs";
 import KpiCards from "../components/KpiCards";
 import CategoryTable from "../components/CategoryTable";
@@ -80,10 +80,17 @@ export default function Dashboard() {
       )}
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} md={60}><PositionPie /></Col>
+        <Col xs={24} md={12} lg={12} xl={12}>
+          <PositionPie />
+        </Col>
+        <Col xs={24} md={12} lg={12} xl={12}>
+          <Card title="类别分布" size="small" styles={{ body: { padding: 12, height: 344 } }}>
+            <CategoryTable data={cat} loading={loading} header={false} height={320} />
+          </Card>
+        </Col>
       </Row>
 
-      <CategoryTable data={cat} loading={loading} />
+      {/* 明细列表 */}
       <PositionTable data={pos} loading={loading} />
     </Space>
   );

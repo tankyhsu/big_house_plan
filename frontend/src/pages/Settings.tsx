@@ -38,7 +38,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <Card title="系统设置" size="small" bodyStyle={{ paddingBottom: 8 }}>
+    <Card title="系统设置" size="small" styles={{ body: { paddingBottom: 8 } }}>
       <Form form={form} layout="vertical" style={{ maxWidth: 520 }}>
         <Form.Item
           label="一份资金（元）"

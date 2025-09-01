@@ -177,7 +177,7 @@ export default function TotalAssetsLine() {
           />
         </Space>
       }
-      bodyStyle={{ padding: 12 }}
+      styles={{ body: { padding: 12 } }}
       loading={loading}
     >
       <ReactECharts notMerge lazyUpdate option={option as any} style={{ height: 340 }} />

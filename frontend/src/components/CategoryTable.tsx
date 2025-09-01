@@ -7,7 +7,7 @@ import { fmtCny, fmtPct, formatNumber } from "../utils/format";
 
 type TreeRow = CategoryRow & { key?: string; children?: TreeRow[] };
 
-export default function CategoryTable({ data, loading }: { data: CategoryRow[]; loading: boolean }) {
+export default function CategoryTable({ data, loading, header = true, height }: { data: CategoryRow[]; loading: boolean; header?: boolean; height?: number }) {
   // 将平铺的类别行，按一级大类 name 分组为可展开的树形
   // 父级行做汇总（target/actual/mv/cost/pnl/ret/overweight/suggest）
   const treeData: TreeRow[] = (() => {
@@ -68,38 +68,36 @@ export default function CategoryTable({ data, loading }: { data: CategoryRow[]; 
       title: "类别",
       dataIndex: "name",
       key: "name",
-      render: (t, r) => (
-        <>
-          {t}
-          {r.sub_name ? <span style={{ color: "#98A2B3" }}> / {r.sub_name}</span> : null}
-        </>
-      ),
+      render: (t, r) => {
+        const isParent = Array.isArray((r as any).children) && (r as any).children.length > 0;
+        // 父级行显示一级分类；子级行仅显示二级分类（无二级则退化为一级名称）
+        if (isParent) return <>{t}</>;
+        return <>{(r.sub_name && r.sub_name.trim()) ? r.sub_name : t}</>;
+      },
     },
     {
       title: "目标份",
       dataIndex: "target_units",
       align: "right",
-      width: 100,
+      width: 80,
       render: (v: number) => formatNumber(v, 2),
     },
     {
       title: "实际份",
       dataIndex: "actual_units",
       align: "right",
-      width: 100,
+      width: 80,
       render: (v: number) => formatNumber(v, 2),
     },
-    { title: "市值", dataIndex: "market_value", align: "right", render: fmtCny },
-    { title: "成本", dataIndex: "cost", align: "right", render: fmtCny },
-    { title: "收益", dataIndex: "pnl", align: "right", render: fmtCny },
-    { title: "收益率", dataIndex: "ret", align: "right", render: fmtPct, width: 100 },
+    // 删除：市值/成本/收益 三列，保留核心配置与收益率
+    { title: "收益率", dataIndex: "ret", align: "right", render: fmtPct, width: 80 },
 
     // === 配置偏离：细分“超配/配置不足/未持仓/在目标范围内” ===
     {
       title: "配置偏离",
       dataIndex: "overweight",
       align: "center",
-      width: 140,
+      width: 120,
       render: (_v, r) => {
         const isEmpty =
           (r.actual_units === 0 || r.actual_units === null) &&
@@ -139,11 +137,15 @@ export default function CategoryTable({ data, loading }: { data: CategoryRow[]; 
 
   return (
     <>
-      <Typography.Title level={5} style={{ marginTop: 16 }}>类别分布</Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-        目标范围 = 目标份额 ± 设置里的带宽（默认 20%）。
-        状态区分：<strong>超配</strong>（建议减仓） / <strong>配置不足</strong>（建议加仓） / <strong>未持仓</strong> / 在目标范围内。
-      </Typography.Paragraph>
+      {header && (
+        <>
+          <Typography.Title level={5} style={{ marginTop: 16 }}>类别分布</Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
+            目标范围 = 目标份额 ± 设置里的带宽（默认 20%）。
+            状态区分：<strong>超配</strong>（建议减仓） / <strong>配置不足</strong>（建议加仓） / <strong>未持仓</strong> / 在目标范围内。
+          </Typography.Paragraph>
+        </>
+      )}
       <Table
         size="small"
         rowKey={(r) => (r as any).key || String((r as any).category_id)}
@@ -152,6 +154,7 @@ export default function CategoryTable({ data, loading }: { data: CategoryRow[]; 
         loading={loading}
         pagination={false}
         expandable={{ defaultExpandAllRows: false }}
+        scroll={height ? { y: height } : undefined}
       />
     </>
   );

@@ -78,7 +78,7 @@ export async function fetchTxnRange(startYmd: string, endYmd: string, codes?: st
   return data as { items: { date: string; ts_code: string; name?: string | null; action: "BUY"|"SELL"|"DIV"|"FEE"|"ADJ"; shares: number; price: number | null; amount: number | null; fee: number | null; }[] };
 }
 
-import type { CategoryLite, InstrumentLite } from "./types";
+import type { CategoryLite, InstrumentLite, InstrumentDetail } from "./types";
 
 export async function fetchInstruments(q?: string): Promise<InstrumentLite[]> {
   const { data } = await client.get("/api/instrument/list", { params: { q } });
@@ -104,6 +104,16 @@ export async function createInstrument(payload: { ts_code: string; name: string;
 export async function lookupInstrument(ts_code: string, ymd?: string) {
   const { data } = await client.get("/api/instrument/lookup", { params: { ts_code, date: ymd } });
   return data as { ts_code: string; name?: string; type?: string; basic?: any; price?: { trade_date: string; close: number } | null };
+}
+
+export async function fetchInstrumentDetail(ts_code: string): Promise<InstrumentDetail> {
+  const { data } = await client.get("/api/instrument/get", { params: { ts_code, nocache: Date.now() } });
+  return data as InstrumentDetail;
+}
+
+export async function editInstrument(payload: { ts_code: string; name: string; category_id: number; active: boolean; type?: string | null; }) {
+  const { data } = await client.post("/api/instrument/edit", payload);
+  return data as { message: string };
 }
 
 // 补充后端返回的原因字段

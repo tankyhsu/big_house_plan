@@ -4,6 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 import { Tooltip } from "antd";
 import { fetchIrrBatch } from "../api/hooks";
 import dayjs from "dayjs";
+import { Link } from "react-router-dom";
 import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
 import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, deletePositionOne, cleanupZeroPositions, lookupInstrument } from "../api/hooks";
 
@@ -246,8 +247,10 @@ export default function PositionEditor() {
       sorter: (a, b) => (a.ts_code || '').localeCompare(b.ts_code || ''),
       render: (t, r) => (
         <div>
-          <strong>{t}</strong>
-          <div style={{ color: "#667085" }}>{r.inst_name}</div>
+          <Link to={`/instrument/${encodeURIComponent(t)}`}>
+            <strong>{t}</strong>
+            <div style={{ color: "#667085" }}>{r.inst_name}</div>
+          </Link>
         </div>
       ),
     },

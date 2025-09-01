@@ -17,7 +17,7 @@ from .logs import ensure_log_schema, LogContext, search_logs
 from .db import get_conn
 from .services.config_svc import get_config, update_config
 from .services.position_svc import list_positions_raw, set_opening_position, update_position_one, delete_position, cleanup_zero_positions
-from .services.instrument_svc import create_instrument, list_instruments, seed_load
+from .services.instrument_svc import create_instrument, list_instruments, seed_load, get_instrument_detail, edit_instrument
 from .services.category_svc import create_category, list_categories
 from .services.txn_svc import create_txn, list_txn, bulk_txn
 from .services.pricing_svc import sync_prices_tushare
@@ -234,6 +234,13 @@ class InstrumentUpdate(BaseModel):
     active: bool
     type: str | None = None  # NEW: STOCK / FUND / CASH
 
+class InstrumentEdit(BaseModel):
+    ts_code: str
+    name: str
+    category_id: int
+    active: bool = True
+    type: str | None = None
+
 @app.get("/api/category/list")
 def api_category_list():
     """列出所有类别（用于前端下拉选择）"""
@@ -259,6 +266,21 @@ def api_instrument_list(q: Optional[str] = None, active_only: bool = True):
     前端 AutoComplete 用于“新增交易”等场景。
     """
     return list_instruments(q, active_only)
+
+@app.get("/api/instrument/get")
+def api_instrument_get(ts_code: str = Query(...)):
+    """获取单个标的详情（含类别名称）。"""
+    try:
+        row = get_instrument_detail(ts_code)
+        if not row:
+            raise HTTPException(status_code=404, detail="instrument_not_found")
+        # 统一布尔类型
+        row["active"] = bool(row.get("active"))
+        return row
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/instrument/create")
 def api_instrument_create(body: InstrumentCreate, recalc_today: bool = Query(False)):
@@ -289,6 +311,20 @@ def api_instrument_update(body: InstrumentUpdate):
         with get_conn() as conn:
             repo_set_active(conn, body.ts_code, body.active)
             conn.commit()
+        log.set_entity("INSTRUMENT", body.ts_code)
+        log.write("OK")
+        return {"message": "ok"}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/instrument/edit")
+def api_instrument_edit(body: InstrumentEdit):
+    """编辑标的基础信息（名称/类别/启用/类型）。"""
+    log = LogContext("EDIT_INSTRUMENT")
+    log.set_payload(body.dict())
+    try:
+        edit_instrument(body.ts_code, body.name, int(body.category_id), bool(body.active), body.type, log)
         log.set_entity("INSTRUMENT", body.ts_code)
         log.write("OK")
         return {"message": "ok"}

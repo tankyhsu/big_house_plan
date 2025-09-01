@@ -3,6 +3,7 @@ import zhCN from "antd/locale/zh_CN";
 import theme from "./theme";
 import Dashboard from "./pages/Dashboard";
 import PositionEditor from "./pages/PositionEditor";
+import InstrumentDetail from "./pages/InstrumentDetail";
 import TxnPage from "./pages/Txn";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import SettingsPage from "./pages/Settings";
@@ -14,7 +15,7 @@ const { Header, Content, Footer } = Layout;
 function TopNav() {
   const location = useLocation();
   const selectedKeys =
-    location.pathname.startsWith("/positions") ? ["positions"] :
+    (location.pathname.startsWith("/positions") || location.pathname.startsWith("/instrument")) ? ["positions"] :
     location.pathname.startsWith("/txn") ? ["txn"] :
     location.pathname.startsWith("/review") ? ["review"] :
     location.pathname.startsWith("/settings") ? ["settings"] :
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/review" element={<ReviewPage />} />
             <Route path="/positions" element={<PositionEditor />} />
+            <Route path="/instrument/:ts_code" element={<InstrumentDetail />} />
             <Route path="/txn" element={<TxnPage />} />
             <Route path="*" element={<Dashboard />} />
             <Route path="/settings" element={<SettingsPage />} />  

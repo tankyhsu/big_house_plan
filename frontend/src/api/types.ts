@@ -99,3 +99,13 @@ export type CategoryLite = {
   sub_name: string;
   target_units: number;
 };
+
+export type InstrumentDetail = {
+  ts_code: string;
+  name: string;
+  type?: "STOCK" | "FUND" | "CASH" | string | null;
+  active: boolean | 0 | 1;
+  category_id: number | null;
+  cat_name?: string | null;
+  cat_sub?: string | null;
+};

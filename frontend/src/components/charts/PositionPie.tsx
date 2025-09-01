@@ -15,7 +15,8 @@ export default function PositionPie({ date }: { date?: string }) {
       const items = rows
         .filter(r => (r.market_value || 0) > 0)
         .map(r => ({
-          name: r.sub_name ? `${r.name}/${r.sub_name}` : r.name,
+          // 仅显示二级分类；若无二级分类则退化为一级名称
+          name: r.sub_name && r.sub_name.trim() ? r.sub_name : r.name,
           value: Number((r.market_value || 0).toFixed(2)),
         }));
       setData(items);
@@ -39,7 +40,7 @@ export default function PositionPie({ date }: { date?: string }) {
   };
 
   return (
-    <Card title="持仓比例（按市值）" size="small" bodyStyle={{ padding: 12 }}>
+    <Card title="持仓比例（按市值）" size="small" styles={{ body: { padding: 12 } }}>
       <ReactECharts notMerge lazyUpdate option={option as any} style={{ height: 320 }} />
     </Card>
   );

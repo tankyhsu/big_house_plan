@@ -71,3 +71,13 @@ def list_active_non_cash_codes(conn: Connection) -> list[str]:
         if (r["t"] or "").upper() != "CASH":
             out.append(r["ts_code"])
     return out
+
+
+def get_one(conn: Connection, ts_code: str):
+    sql = (
+        "SELECT i.ts_code, i.name, i.type, i.active, i.category_id, "
+        "c.name AS cat_name, c.sub_name AS cat_sub "
+        "FROM instrument i LEFT JOIN category c ON c.id = i.category_id "
+        "WHERE i.ts_code = ?"
+    )
+    return conn.execute(sql, (ts_code,)).fetchone()

@@ -73,7 +73,7 @@ export default function PositionSeriesLine({ tsCodes, title, normalize = false }
           />
         </Space>
       }
-      bodyStyle={{ padding: 12 }}
+      styles={{ body: { padding: 12 } }}
       loading={loading}
     >
       {(!tsCodes || tsCodes.length === 0) ? (
