@@ -717,6 +717,50 @@ def api_price_last(ts_code: str = Query(...), date: str | None = Query(None, pat
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/price/ohlc")
+def api_price_ohlc(
+    ts_code: str = Query(...),
+    start: str = Query(..., pattern=r"^\d{8}$"),
+    end: str = Query(..., pattern=r"^\d{8}$"),
+):
+    """
+    返回指定标的在给定区间内的日线 OHLCV 数据（含可能的缺项回填为 close）。
+    输出: { items: [{ date: YYYY-MM-DD, open, high, low, close, vol }] }
+    """
+    try:
+        sd = f"{start[0:4]}-{start[4:6]}-{start[6:8]}"
+        ed = f"{end[0:4]}-{end[4:6]}-{end[6:8]}"
+        sql = (
+            "SELECT trade_date, open, high, low, close, vol "
+            "FROM price_eod WHERE ts_code=? AND trade_date >= ? AND trade_date <= ? "
+            "ORDER BY trade_date ASC"
+        )
+        with get_conn() as conn:
+            rows = conn.execute(sql, (ts_code, sd, ed)).fetchall()
+        items = []
+        for r in rows:
+            c = float(r["close"]) if r["close"] is not None else None
+            # 若 open/high/low 缺失，退化为 close（平盘蜡烛）
+            o = float(r["open"]) if r["open"] is not None else (c if c is not None else None)
+            h = float(r["high"]) if r["high"] is not None else (c if c is not None else None)
+            l = float(r["low"]) if r["low"] is not None else (c if c is not None else None)
+            if c is None:
+                # 若 close 也缺失，跳过该行
+                continue
+            v = float(r["vol"]) if ("vol" in r.keys() and r["vol"] is not None) else None
+            items.append({
+                "date": r["trade_date"],
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "vol": v,
+            })
+        return {"items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================================================
 # 十、标的查找（TuShare 辅助）
 # =============================================================================

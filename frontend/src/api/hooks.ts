@@ -151,3 +151,10 @@ export async function updateSettings(updates: Record<string, any>, recalcToday: 
   const { data } = await client.post("/api/settings/update", { updates, recalc_today: recalcToday });
   return data as { message: string; updated: string[] };
 }
+
+// OHLC for K-line
+export type OhlcItem = { date: string; open: number; high: number; low: number; close: number; vol?: number | null };
+export async function fetchOhlcRange(ts_code: string, startYmd: string, endYmd: string): Promise<OhlcItem[]> {
+  const { data } = await client.get("/api/price/ohlc", { params: { ts_code, start: startYmd, end: endYmd, nocache: Date.now() } });
+  return (data?.items || []) as OhlcItem[];
+}

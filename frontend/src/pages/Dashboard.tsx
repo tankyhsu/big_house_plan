@@ -85,7 +85,7 @@ export default function Dashboard() {
         </Col>
         <Col xs={24} md={12} lg={12} xl={12}>
           <Card title="类别分布" size="small" styles={{ body: { padding: 12, height: 344 } }}>
-            <CategoryTable data={cat} loading={loading} header={false} height={320} />
+            <CategoryTable data={cat} loading={loading} header={false} height={280} />
           </Card>
         </Col>
       </Row>
