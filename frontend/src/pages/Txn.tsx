@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, DatePicker, message, Typography } from "antd";
+import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, DatePicker, message, Typography, Alert, Row, Col } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite } from "../api/types";
@@ -152,6 +152,42 @@ export default function TxnPage() {
     if (!s || !p || Number.isNaN(p)) return null;
     return s * (p - (curAvgCost as number)) - f;
   }, [watchAction, watchShares, watchPrice, watchFee, curAvgCost]);
+
+  // 投资框架合规性检查
+  const frameworkCompliance = useMemo(() => {
+    const action = watchAction;
+    const shares = Number(watchShares || 0);
+    const holdings = curShares || 0;
+    
+    if (!action || !shares || shares <= 0) return null;
+
+    const warnings = [];
+    
+    if (action === "BUY") {
+      // 买入检查：是否超过1份单位
+      if (shares > 1) {
+        warnings.push({
+          type: "warning" as const,
+          message: `买入数量 ${shares} 份超过了投资框架建议的单次1份限制，可能存在冲动交易风险。建议分批建仓，避免一次性满仓。`
+        });
+      }
+    } else if (action === "SELL") {
+      // 卖出检查：是否一次性清仓
+      if (holdings > 0 && shares >= holdings) {
+        warnings.push({
+          type: "error" as const,
+          message: `准备全仓卖出 ${shares} 份（当前持有 ${holdings} 份），这违背了投资框架的渐进减仓原则。建议分批减仓，每次卖出不超过总持仓的1/2。`
+        });
+      } else if (holdings > 0 && shares > holdings * 0.5) {
+        warnings.push({
+          type: "warning" as const,
+          message: `本次卖出 ${shares} 份超过持仓的一半（当前持有 ${holdings} 份），建议考虑是否符合你的投资框架，避免情绪化决策。`
+        });
+      }
+    }
+    
+    return warnings.length > 0 ? warnings : null;
+  }, [watchAction, watchShares, curShares]);
 
   const columns: ColumnsType<TxnItem> = [
     { title: "日期", dataIndex: "trade_date", width: 120 },
@@ -315,50 +351,100 @@ export default function TxnPage() {
         okText="提交"
         cancelText="取消"
         destroyOnClose
+        width={720}
       >
         <Form
           form={form}
           layout="vertical"
           initialValues={{ action: "BUY", date: dayjs(), shares: 0, fee: 0 }}
         >
-          <Form.Item
-            label="标的代码（可下拉选择或直接输入新代码）"
-            name="ts_code"
-            rules={[{ required: true, message: "请输入或选择 ts_code" }]}
-          >
-            <AutoComplete
-              options={options}
-              onSearch={onSearch}
-              onChange={() => { setTimeout(refreshContextInfo, 0); }}
-              placeholder="如 510300.SH"
-              allowClear
-              notFoundContent={searching ? "搜索中..." : "可直接输入新代码"}
-              filterOption={(inputValue, option) =>
-                (option?.value as string)?.toUpperCase().includes(inputValue.toUpperCase()) ||
-                (option?.label as string)?.toUpperCase().includes(inputValue.toUpperCase())
-              }
-            />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="标的代码"
+                name="ts_code"
+                rules={[{ required: true, message: "请输入或选择 ts_code" }]}
+              >
+                <AutoComplete
+                  options={options}
+                  onSearch={onSearch}
+                  onChange={() => { setTimeout(refreshContextInfo, 0); }}
+                  placeholder="如 510300.SH"
+                  allowClear
+                  notFoundContent={searching ? "搜索中..." : "可直接输入新代码"}
+                  filterOption={(inputValue, option) =>
+                    (option?.value as string)?.toUpperCase().includes(inputValue.toUpperCase()) ||
+                    (option?.label as string)?.toUpperCase().includes(inputValue.toUpperCase())
+                  }
+                />
+              </Form.Item>
 
-          <Form.Item label="类型" name="type" initialValue="STOCK" rules={[{ required: true }]}>
-            <Select
-              disabled={typeLocked}
-              options={[
-                { value: "STOCK", label: "股票（交易所收盘价）" },
-                { value: "ETF", label: "ETF（交易所收盘价）" },
-                { value: "FUND", label: "基金（净值）" },
-                { value: "CASH", label: "现金/货基（不拉行情）" },
-              ]}
-            />
-          </Form.Item>
+              <Form.Item label="类型" name="type" initialValue="STOCK" rules={[{ required: true }]}>
+                <Select
+                  disabled={typeLocked}
+                  options={[
+                    { value: "STOCK", label: "股票（交易所收盘价）" },
+                    { value: "ETF", label: "ETF（交易所收盘价）" },
+                    { value: "FUND", label: "基金（净值）" },
+                    { value: "CASH", label: "现金/货基（不拉行情）" },
+                  ]}
+                />
+              </Form.Item>
 
-          <Form.Item label="交易日期" name="date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: "100%" }} onChange={() => { setTimeout(refreshContextInfo, 0); }} />
-          </Form.Item>
+              <Form.Item label="交易日期" name="date" rules={[{ required: true }]}>
+                <DatePicker style={{ width: "100%" }} onChange={() => { setTimeout(refreshContextInfo, 0); }} />
+              </Form.Item>
 
-          <Form.Item label="方向" name="action" rules={[{ required: true }]}>
-            <Select options={ACTIONS.map(a => ({ value: a, label: a }))} onChange={() => { setTimeout(refreshContextInfo, 0); }} />
-          </Form.Item>
+              <Form.Item label="方向" name="action" rules={[{ required: true }]}>
+                <Select options={ACTIONS.map(a => ({ value: a, label: a }))} onChange={() => { setTimeout(refreshContextInfo, 0); }} />
+              </Form.Item>
+            </Col>
+            
+            <Col span={12}>
+              {form.getFieldValue('type') !== 'CASH' && (
+                <Form.Item
+                  label="数量（份/股）"
+                  name="shares"
+                  rules={[{ required: true, message: "请输入数量" }, { type: "number", min: 0.000001, message: "必须 > 0" }]}
+                >
+                  <InputNumber controls={false} precision={6} style={{ width: "100%" }} />
+                </Form.Item>
+              )}
+
+              {form.getFieldValue('type') !== 'CASH' && (
+                <Form.Item
+                  label="价格（DIV/FEE/ADJ 可留空）"
+                  name="price"
+                  rules={[{ type: "number", min: 0 }]}
+                >
+                  <InputNumber
+                    controls={false}
+                    precision={6}
+                    style={{ width: "100%" }}
+                    placeholder="如 4.560000"
+                  />
+                </Form.Item>
+              )}
+
+              <Form.Item label="费用（可选）" name="fee" rules={[{ type: "number", min: 0 }]}>
+                <InputNumber controls={false} precision={2} style={{ width: "100%" }} placeholder="如 1.50" />
+              </Form.Item>
+
+              <Form.Item label="备注" name="notes">
+                <Input.TextArea placeholder="可选" rows={3} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          {(form.getFieldValue('action') === 'ADJ' || form.getFieldValue('type') === 'CASH') && (
+            <Form.Item
+              label={form.getFieldValue('type') === 'CASH' ? '金额（自动按单价1折算数量）' : '金额（正=入金，负=出金）'}
+              name="amount"
+              rules={[{ required: true, message: '请输入金额' }]}
+            >
+              <InputNumber controls={false} precision={2} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
 
           {/* 当前持仓/价格提示 + 快捷仓位按钮 */}
           <div style={{ marginBottom: 8 }}>
@@ -393,48 +479,21 @@ export default function TxnPage() {
             </Space>
           </div>
 
-          {form.getFieldValue('type') !== 'CASH' && (
-            <Form.Item
-              label="数量（份/股）"
-              name="shares"
-              rules={[{ required: true, message: "请输入数量" }, { type: "number", min: 0.000001, message: "必须 > 0" }]}
-            >
-              <InputNumber controls={false} precision={6} style={{ width: "100%" }} />
-            </Form.Item>
+          {/* 投资框架合规性警告 */}
+          {frameworkCompliance && (
+            <div style={{ marginBottom: 16 }}>
+              {frameworkCompliance.map((warning, index) => (
+                <Alert
+                  key={index}
+                  type={warning.type}
+                  message="投资框架提醒"
+                  description={warning.message}
+                  showIcon
+                  style={{ marginBottom: index < frameworkCompliance.length - 1 ? 8 : 0 }}
+                />
+              ))}
+            </div>
           )}
-
-          {(form.getFieldValue('action') === 'ADJ' || form.getFieldValue('type') === 'CASH') && (
-            <Form.Item
-              label={form.getFieldValue('type') === 'CASH' ? '金额（自动按单价1折算数量）' : '金额（正=入金，负=出金）'}
-              name="amount"
-              rules={[{ required: true, message: '请输入金额' }]}
-            >
-              <InputNumber controls={false} precision={2} style={{ width: '100%' }} />
-            </Form.Item>
-          )}
-
-          {form.getFieldValue('type') !== 'CASH' && (
-            <Form.Item
-              label="价格（DIV/FEE/ADJ 可留空）"
-              name="price"
-              rules={[{ type: "number", min: 0 }]}
-            >
-              <InputNumber
-                controls={false}
-                precision={6}
-                style={{ width: "100%" }}
-                placeholder="如 4.560000"
-              />
-            </Form.Item>
-          )}
-
-          <Form.Item label="费用（可选）" name="fee" rules={[{ type: "number", min: 0 }]}>
-            <InputNumber controls={false} precision={2} style={{ width: "100%" }} placeholder="如 1.50" />
-          </Form.Item>
-
-          <Form.Item label="备注" name="notes">
-            <Input.TextArea placeholder="可选" rows={2} />
-          </Form.Item>
         </Form>
       </Modal>
 

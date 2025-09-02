@@ -2,11 +2,19 @@ import { Badge, Table, Tag, Typography, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { PositionRow } from "../api/types";
 import { fmtCny, fmtPct } from "../utils/format";
+import { Link } from "react-router-dom";
 
 export default function PositionTable({ data, loading }: { data: PositionRow[]; loading: boolean }) {
   const columns: ColumnsType<PositionRow> = [
     { title: "类别", dataIndex: "cat_name", render: (t, r) => <>{t}{r.cat_sub? <span style={{ color:"#98A2B3" }}> / {r.cat_sub}</span> : null}</> },
-    { title: "代码/名称", dataIndex: "ts_code", render: (t, r) => <div><strong>{t}</strong><div style={{ color:"#667085" }}>{r.name}</div></div> },
+    { title: "代码/名称", dataIndex: "ts_code", render: (t, r) => (
+      <div>
+        <Link to={`/instrument/${t}`} style={{ fontWeight: 'bold' }}>
+          {t}
+        </Link>
+        <div style={{ color:"#667085" }}>{r.name}</div>
+      </div>
+    )},
     { title: "持仓份额", dataIndex: "shares", align: "right", width: 120, render: (v)=> v ?? "-" },
     { title: "均价", dataIndex: "avg_cost", align: "right", width: 100, render: (v) => v===null? "-" : v.toFixed(4) },
     { title: "现价", dataIndex: "close", align: "right", width: 100,
