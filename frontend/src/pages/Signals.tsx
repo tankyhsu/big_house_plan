@@ -6,27 +6,7 @@ import { fetchAllSignals } from "../api/hooks";
 import type { SignalRow, SignalType, SignalLevel } from "../api/types";
 import { ReloadOutlined, AlertOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
-
-// 信号类型配置
-const SIGNAL_CONFIG: Record<SignalType, { label: string; color: string; description: string }> = {
-  STOP_GAIN: { label: "止盈", color: "red", description: "达到止盈目标" },
-  STOP_LOSS: { label: "止损", color: "volcano", description: "触发止损条件" },
-  UNDERWEIGHT: { label: "低配", color: "blue", description: "类别配置低于目标范围" },
-  BUY_SIGNAL: { label: "买入", color: "green", description: "买入信号" },
-  SELL_SIGNAL: { label: "卖出", color: "red", description: "卖出信号" },
-  REBALANCE: { label: "再平衡", color: "purple", description: "需要再平衡调整" },
-  RISK_ALERT: { label: "风险预警", color: "magenta", description: "风险预警信号" },
-  MOMENTUM: { label: "动量", color: "cyan", description: "动量信号" },
-  MEAN_REVERT: { label: "均值回归", color: "geekblue", description: "均值回归信号" },
-};
-
-// 信号级别配置
-const LEVEL_CONFIG: Record<SignalLevel, { label: string; color: string }> = {
-  HIGH: { label: "高", color: "error" },
-  MEDIUM: { label: "中", color: "warning" },
-  LOW: { label: "低", color: "processing" },
-  INFO: { label: "信息", color: "default" },
-};
+import { SIGNAL_CONFIG, LEVEL_CONFIG } from "../utils/signalConfig";
 
 export default function SignalsPage() {
   const [signals, setSignals] = useState<SignalRow[]>([]);

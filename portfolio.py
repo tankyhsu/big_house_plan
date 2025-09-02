@@ -40,7 +40,10 @@ def read_cfg(path: str = "config.yaml"):
 
 
 def get_conn(cfg):
-    return sqlite3.connect(cfg["db_path"])  # path from config.yaml
+    # Import backend db module to use unified path resolution
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+    from db import get_db_path
+    return sqlite3.connect(get_db_path())
 
 
 # ---------------- Schema & Seed ----------------

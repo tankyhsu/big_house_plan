@@ -32,7 +32,7 @@
 
 ## Security & Configuration Tips
 - Do not commit secrets. Keep tokens (e.g., `tushare_token`) only in local `config.yaml`. Frontend API base lives in `frontend/.env` via `VITE_API_BASE`.
-- Configure DB path via `config.yaml` (`db_path: ./portfolio.db`). Avoid committing local DB artifacts.
+- Configure DB path via `config.yaml` (`db_path: ./backend/data/portfolio.db`). Avoid committing local DB artifacts.
 
 ## Architecture Overview
 - Backend: FastAPI REST over SQLite (`db.py`), centralized logging, service‑oriented modules.

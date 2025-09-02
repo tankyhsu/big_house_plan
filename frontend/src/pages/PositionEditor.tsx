@@ -2,15 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert, Switch, Popconfirm } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Tooltip } from "antd";
-import { fetchIrrBatch } from "../api/hooks";
+import { fetchIrrBatch, fetchAllSignals } from "../api/hooks";
 import dayjs from "dayjs";
 import { Link } from "react-router-dom";
-import type { PositionRaw, InstrumentLite, CategoryLite } from "../api/types";
+import type { PositionRaw, InstrumentLite, CategoryLite, SignalRow } from "../api/types";
 import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, cleanupZeroPositions, lookupInstrument } from "../api/hooks";
+import SignalTags from "../components/SignalTags";
+import { getSignalsForTsCode } from "../hooks/useRecentSignals";
 
 export default function PositionEditor() {
   const [data, setData] = useState<PositionRaw[]>([]);
   const [loading, setLoading] = useState(false);
+  const [signals, setSignals] = useState<SignalRow[]>([]);
   // 行内编辑已移除，统一使用弹窗编辑
 
   // 控制显示 0 仓位
@@ -50,6 +53,23 @@ export default function PositionEditor() {
     fetchInstruments().then(setInstOpts).catch(() => {});
     fetchCategories().then(setCategories).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 加载最近一个月的信号数据
+  useEffect(() => {
+    const loadSignals = async () => {
+      try {
+        const oneMonthAgo = dayjs().subtract(1, "month").format("YYYY-MM-DD");
+        const today = dayjs().format("YYYY-MM-DD");
+        const signalData = await fetchAllSignals(undefined, undefined, oneMonthAgo, today, 200);
+        console.log('📊 PositionEditor loaded signals:', signalData?.length || 0, 'signals');
+        setSignals(signalData || []);
+      } catch (error) {
+        console.error("Failed to load signals:", error);
+        setSignals([]);
+      }
+    };
+    loadSignals();
   }, []);
 
   // includeZero 变化时刷新
@@ -210,14 +230,22 @@ export default function PositionEditor() {
       title: "代码/名称",
       dataIndex: "ts_code",
       sorter: (a, b) => (a.ts_code || '').localeCompare(b.ts_code || ''),
-      render: (t, r) => (
-        <div>
-          <Link to={`/instrument/${encodeURIComponent(t)}`}>
-            <strong>{t}</strong>
-            <div style={{ color: "#667085" }}>{r.inst_name}</div>
-          </Link>
-        </div>
-      ),
+      render: (t, r) => {
+        const tsSignals = getSignalsForTsCode(signals, t);
+        return (
+          <div>
+            <Link to={`/instrument/${encodeURIComponent(t)}`}>
+              <strong>{t}</strong>
+              <div style={{ color: "#667085", display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span>{r.inst_name}</span>
+                {tsSignals.length > 0 && (
+                  <SignalTags signals={tsSignals} maxDisplay={3} />
+                )}
+              </div>
+            </Link>
+          </div>
+        );
+      },
     },
     {
       title: "持仓份额",

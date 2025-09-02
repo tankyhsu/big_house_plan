@@ -17,7 +17,7 @@ python -m pip install -r requirements.txt
 if [ ! -f "config.yaml" ]; then
   cat > config.yaml <<'YAML'
 # 基本配置（请按实际 DB 路径修改）
-db_path: ./portfolio.db
+db_path: ./backend/data/portfolio.db
 unit_amount: 3000
 stop_gain_pct: 0.30
 overweight_band: 0.20
@@ -26,7 +26,7 @@ ma_long: 60
 ma_risk: 200
 # tushare_token: "your-token"
 YAML
-  echo "已生成默认 config.yaml（db_path=./portfolio.db）"
+  echo "已生成默认 config.yaml（db_path=./backend/data/portfolio.db）"
 fi
 
 echo "==> [backend] 启动 uvicorn on :8000"

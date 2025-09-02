@@ -83,7 +83,7 @@ npm run dev
 
 `bash scripts/dev.sh` 首次运行会在项目根生成默认 `config.yaml`。
 
-- db_path: SQLite 文件路径（默认 `./portfolio.db`）
+- db_path: SQLite 文件路径（默认 `./backend/data/portfolio.db`）
 - unit_amount, stop_gain_pct, overweight_band, ma_short, ma_long, ma_risk
 - tushare_token: TuShare 令牌（留空则跳过价格同步）
 - cash_ts_code: 现金镜像用代码（默认 `CASH.CNY`）

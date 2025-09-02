@@ -2,11 +2,39 @@ import { Card, Col, Row, Statistic, Tag, Tooltip } from "antd";
 import { fmtCny, fmtPct } from "../utils/format";
 import { InfoCircleOutlined } from "@ant-design/icons";
 
+// 更灵活的信号类型定义，支持任意信号类型
 type Props = {
   marketValue: number; cost: number; pnl: number; ret: number | null;
-  signals: { stop_gain: number; overweight: number };
+  signals: Record<string, number>;
   priceFallback: boolean;
   dateText: string;
+};
+
+// 信号类型配置
+const SIGNAL_LABELS: Record<string, string> = {
+  'stop_gain': '止盈',
+  'stop_loss': '止损',
+  'overweight': '超配',
+  'underweight': '低配',
+  'buy_signal': '买入',
+  'sell_signal': '卖出',
+  'rebalance': '再平衡',
+  'risk_alert': '风险预警',
+  'momentum': '动量',
+  'mean_revert': '均值回归',
+};
+
+const SIGNAL_COLORS: Record<string, string> = {
+  'stop_gain': '#f5222d',
+  'stop_loss': '#fa541c',
+  'overweight': '#faad14',
+  'underweight': '#1890ff',
+  'buy_signal': '#52c41a',
+  'sell_signal': '#f5222d',
+  'rebalance': '#722ed1',
+  'risk_alert': '#eb2f96',
+  'momentum': '#13c2c2',
+  'mean_revert': '#2f54eb',
 };
 
 export default function KpiCards({ marketValue, cost, pnl, ret, signals, priceFallback, dateText }: Props) {
@@ -53,12 +81,30 @@ export default function KpiCards({ marketValue, cost, pnl, ret, signals, priceFa
       </Col>
       <Col xs={24} md={12} lg={8} style={{ display: "flex" }}>
         <Card style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", gap: 12 }}>
-            <Statistic title="止盈信号" value={signals.stop_gain} />
-            <Statistic title="超出目标范围（类别）" value={signals.overweight} />
+          <div style={{ marginBottom: 8, fontSize: 14, fontWeight: 500, color: '#262626' }}>
+            信号统计（近一个月）
           </div>
-          <div style={{ marginTop: 12, color: "#667085", fontSize: 12 }}>
-            提示：信号统计来自当日快照（/api/signal）
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+            {Object.entries(signals)
+              .filter(([_, count]) => count > 0)
+              .map(([type, count]) => (
+                <Tag 
+                  key={type}
+                  color={SIGNAL_COLORS[type] || 'default'}
+                  style={{ margin: 0, fontSize: '12px', display: 'flex', alignItems: 'center' }}
+                >
+                  {SIGNAL_LABELS[type] || type}: {count}
+                </Tag>
+              ))
+            }
+            {Object.values(signals).every(count => count === 0) && (
+              <Tag color="default" style={{ margin: 0, fontSize: '12px' }}>
+                暂无信号
+              </Tag>
+            )}
+          </div>
+          <div style={{ color: "#8c8c8c", fontSize: 11, marginTop: 'auto' }}>
+            基于近30天信号记录统计
           </div>
         </Card>
       </Col>

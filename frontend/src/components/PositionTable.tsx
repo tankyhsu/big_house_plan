@@ -4,40 +4,49 @@ import type { PositionRow, SignalRow } from "../api/types";
 import { fmtCny, fmtPct } from "../utils/format";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import dayjs from "dayjs";
 import { fetchAllSignals } from "../api/hooks";
+import SignalTags from "./SignalTags";
+import { getSignalsForTsCode } from "../hooks/useRecentSignals";
 
 export default function PositionTable({ data, loading }: { data: PositionRow[]; loading: boolean }) {
   const [signals, setSignals] = useState<SignalRow[]>([]);
 
-  // 获取最新历史信号数据
+  // 获取最近一个月的信号数据
   useEffect(() => {
     const loadSignals = async () => {
       try {
-        const signalData = await fetchAllSignals(undefined, undefined, undefined, undefined, 200);
-        setSignals(signalData);
+        const oneMonthAgo = dayjs().subtract(1, "month").format("YYYY-MM-DD");
+        const today = dayjs().format("YYYY-MM-DD");
+        const signalData = await fetchAllSignals(undefined, undefined, oneMonthAgo, today, 200);
+        console.log('📊 PositionTable loaded signals:', signalData?.length || 0, 'signals', signalData);
+        setSignals(signalData || []);
       } catch (error) {
         console.error("Failed to load signals:", error);
+        setSignals([]);
       }
     };
     loadSignals();
   }, []);
-
-  // 根据标的代码获取最新信号
-  const getSignalsForTsCode = (ts_code: string) => {
-    const tsSignals = signals.filter(s => s.ts_code === ts_code);
-    // 按日期倒序排列，取最新的信号
-    return tsSignals.sort((a, b) => b.trade_date.localeCompare(a.trade_date));
-  };
   const columns: ColumnsType<PositionRow> = [
     { title: "类别", dataIndex: "cat_name", render: (t, r) => <>{t}{r.cat_sub? <span style={{ color:"#98A2B3" }}> / {r.cat_sub}</span> : null}</> },
-    { title: "代码/名称", dataIndex: "ts_code", render: (t, r) => (
-      <div>
-        <Link to={`/instrument/${t}`} style={{ fontWeight: 'bold' }}>
-          {t}
-        </Link>
-        <div style={{ color:"#667085" }}>{r.name}</div>
-      </div>
-    )},
+    { title: "代码/名称", dataIndex: "ts_code", render: (t, r) => {
+      const tsSignals = getSignalsForTsCode(signals, t);
+      console.log('📋 Row render:', t, 'signals found:', tsSignals?.length || 0, 'tsSignals:', tsSignals);
+      return (
+        <div>
+          <Link to={`/instrument/${t}`} style={{ fontWeight: 'bold' }}>
+            {t}
+          </Link>
+          <div style={{ color:"#667085", display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span>{r.name}</span>
+            {tsSignals.length > 0 && (
+              <SignalTags signals={tsSignals} maxDisplay={3} />
+            )}
+          </div>
+        </div>
+      );
+    }},
     { title: "持仓份额", dataIndex: "shares", align: "right", width: 120, render: (v)=> v ?? "-" },
     { title: "均价", dataIndex: "avg_cost", align: "right", width: 100, render: (v) => v===null? "-" : v.toFixed(4) },
     { title: "现价", dataIndex: "close", align: "right", width: 100,

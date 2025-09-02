@@ -5,8 +5,8 @@ import KpiCards from "../components/KpiCards";
 import CategoryTable from "../components/CategoryTable";
 import PositionTable from "../components/PositionTable";
 import PositionPie from "../components/charts/PositionPie";
-import { fetchDashboard, fetchCategory, fetchPosition, postCalc, postSyncPrices } from "../api/hooks";
-import type { CategoryRow, PositionRow } from "../api/types";
+import { fetchDashboard, fetchCategory, fetchPosition, postCalc, postSyncPrices, fetchAllSignals } from "../api/hooks";
+import type { CategoryRow, PositionRow, SignalRow } from "../api/types";
 import { dashedToYmd } from "../utils/format";
 import { ReloadOutlined, CalculatorOutlined, CloudSyncOutlined } from "@ant-design/icons";
 
@@ -17,22 +17,38 @@ export default function Dashboard() {
   const [cat, setCat] = useState<CategoryRow[]>([]);
   const [pos, setPos] = useState<PositionRow[]>([]);
   const [dash, setDash] = useState<any>(null);
+  const [monthlySignals, setMonthlySignals] = useState<SignalRow[]>([]);
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [d, c, p] = await Promise.all([
+      // 获取一个月前的日期
+      const oneMonthAgo = date.subtract(1, "month").format("YYYY-MM-DD");
+      const today = date.format("YYYY-MM-DD");
+      
+      const [d, c, p, signals] = await Promise.all([
         fetchDashboard(ymd),
         fetchCategory(ymd),
         fetchPosition(ymd),
+        fetchAllSignals(undefined, undefined, oneMonthAgo, today, 1000),
       ]);
-      setDash(d); setCat(c); setPos(p);
+      setDash(d); setCat(c); setPos(p); setMonthlySignals(signals || []);
     } catch (e:any) {
       message.error(e.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // 计算月度信号统计
+  const monthlySignalStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    monthlySignals.forEach(signal => {
+      const type = signal.type.toLowerCase();
+      stats[type] = (stats[type] || 0) + 1;
+    });
+    return stats;
+  }, [monthlySignals]);
 
   useEffect(()=>{ loadAll(); }, [ymd]);
 
@@ -73,7 +89,7 @@ export default function Dashboard() {
           cost={dash.kpi.cost}
           pnl={dash.kpi.unrealized_pnl}
           ret={dash.kpi.ret}
-          signals={dash.signals}
+          signals={monthlySignalStats}
           priceFallback={dash.price_fallback_used}
           dateText={dash.date}
         />

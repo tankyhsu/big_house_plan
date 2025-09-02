@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, Select, Space, Typography, message, Table, DatePicker, Row, Col, Tabs, Tag, Tooltip } from "antd";
+import { Button, Card, Form, Input, Select, Space, Typography, message, Table, DatePicker, Row, Col, Tabs } from "antd";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals } from "../api/hooks";
 import CandleChart from "../components/charts/CandleChart";
+import SignalTags from "../components/SignalTags";
 import type { CategoryLite, InstrumentDetail, SignalRow } from "../api/types";
 import dayjs, { Dayjs } from "dayjs";
 import type { ColumnsType } from "antd/es/table";
@@ -81,13 +82,15 @@ export default function InstrumentDetail() {
       }
     }).catch(() => setPosInfo(null));
 
-    // 获取该标的的历史信号
+    // 获取该标的的历史信号（一个月以内）
     const loadSignals = async () => {
       if (!ts_code) return;
       setSignalsLoading(true);
       try {
-        const signalData = await fetchAllSignals(undefined, ts_code, undefined, undefined, 10);
-        console.log('🔍 Loaded signals for', ts_code, ':', signalData);
+        const oneMonthAgo = dayjs().subtract(1, "month").format("YYYY-MM-DD");
+        const today = dayjs().format("YYYY-MM-DD");
+        const signalData = await fetchAllSignals(undefined, ts_code, oneMonthAgo, today, 10);
+        console.log('🔍 Loaded signals for', ts_code, ':', signalData?.length || 0, 'signals');
         setSignals(signalData || []);
       } catch (error) {
         console.error("Failed to load signals for ts_code:", error);
@@ -180,21 +183,7 @@ export default function InstrumentDetail() {
               </span>
               {signals.length > 0 && (
                 <div style={{ marginLeft: 8 }}>
-                  {signals.map((signal, idx) => {
-                    const color = signal.type === "STOP_GAIN" ? "red" : 
-                                 signal.type === "STOP_LOSS" ? "volcano" : 
-                                 signal.type === "UNDERWEIGHT" ? "blue" : "gray";
-                    const label = signal.type === "STOP_GAIN" ? "止盈" :
-                                 signal.type === "STOP_LOSS" ? "止损" :
-                                 signal.type === "UNDERWEIGHT" ? "低配" : signal.type;
-                    return (
-                      <Tooltip key={idx} title={signal.message}>
-                        <Tag color={color} style={{ marginLeft: 2 }}>
-                          {label}
-                        </Tag>
-                      </Tooltip>
-                    );
-                  })}
+                  <SignalTags signals={signals} maxDisplay={5} />
                 </div>
               )}
             </div>

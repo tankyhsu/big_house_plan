@@ -24,8 +24,8 @@ export function buildCandleOption(params: {
   const volumes = mapVolumes(items as any, upColor, downColor);
 
   // Process signals early to use in series
-  console.log('📊 Building candle chart with signals:', signals);
-  console.log('📊 K-line data dates range:', items.length > 0 ? `${items[0]?.date} to ${items[items.length-1]?.date}` : 'no data');
+  // console.log('📊 Building candle chart with signals:', signals);
+  // console.log('📊 K-line data dates range:', items.length > 0 ? `${items[0]?.date} to ${items[items.length-1]?.date}` : 'no data');
   
   // Helper function to find price for a signal date
   const findPriceForDate = (date: string): number | null => {
@@ -70,8 +70,8 @@ export function buildCandleOption(params: {
   const stopGainSignals = processedSignals.filter(s => s.type === 'STOP_GAIN');
   const stopLossSignals = processedSignals.filter(s => s.type === 'STOP_LOSS');
   const otherSignals = processedSignals.filter(s => s.type !== 'STOP_GAIN' && s.type !== 'STOP_LOSS');
-  console.log('🔥 Stop gain signals:', stopGainSignals);
-  console.log('⚠️ Stop loss signals:', stopLossSignals);
+  // console.log('🔥 Stop gain signals:', stopGainSignals);
+  // console.log('⚠️ Stop loss signals:', stopLossSignals);
 
   // 布局参数
   const padTop = 12;
