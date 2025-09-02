@@ -1,4 +1,5 @@
 import { Tag, Tooltip } from "antd";
+import dayjs from "dayjs";
 import type { SignalRow } from "../api/types";
 
 interface SignalTagsProps {
@@ -18,6 +19,8 @@ const getSignalColor = (type: string): string => {
     'RISK_ALERT': 'magenta',
     'MOMENTUM': 'cyan',
     'MEAN_REVERT': 'geekblue',
+    'BULLISH': 'lime',          // 利好信号
+    'BEARISH': 'orange',        // 利空信号
   };
   return colors[type] || 'gray';
 };
@@ -33,8 +36,29 @@ const getSignalLabel = (type: string): string => {
     'RISK_ALERT': '风险预警',
     'MOMENTUM': '动量',
     'MEAN_REVERT': '均值回归',
+    'BULLISH': '利好',          // 利好信号
+    'BEARISH': '利空',          // 利空信号
   };
   return labels[type] || type;
+};
+
+const getRelativeTimeText = (tradeDate: string): string => {
+  const signalDay = dayjs(tradeDate);
+  const now = dayjs();
+  const daysDiff = now.diff(signalDay, 'days');
+  
+  if (daysDiff === 0) {
+    return '今天';
+  } else if (daysDiff === 1) {
+    return '1天前';
+  } else if (daysDiff === 2) {
+    return '2天前';
+  } else if (daysDiff === 3) {
+    return '3天前';
+  } else {
+    // 3天以前显示具体日期
+    return signalDay.format('MM-DD');
+  }
 };
 
 export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps) {
@@ -49,9 +73,13 @@ export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps)
       {displaySignals.map((signal, idx) => {
         const color = getSignalColor(signal.type);
         const label = getSignalLabel(signal.type);
+        const relativeTime = getRelativeTimeText(signal.trade_date);
         
         return (
-          <Tooltip key={idx} title={signal.message}>
+          <Tooltip 
+            key={idx} 
+            title={`${relativeTime} • ${signal.message}`}
+          >
             <Tag color={color} style={{ margin: 0, fontSize: '11px' }}>
               {label}
             </Tag>

@@ -11,6 +11,8 @@ export const SIGNAL_CONFIG: Record<SignalType, { label: string; color: string; d
   RISK_ALERT: { label: "风险预警", color: "magenta", description: "风险预警信号" },
   MOMENTUM: { label: "动量", color: "cyan", description: "动量信号" },
   MEAN_REVERT: { label: "均值回归", color: "geekblue", description: "均值回归信号" },
+  BULLISH: { label: "利好", color: "green", description: "利好政策或市场信号" },
+  BEARISH: { label: "利空", color: "orange", description: "利空政策或市场信号" },
 };
 
 // 信号级别配置

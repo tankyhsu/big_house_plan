@@ -45,7 +45,9 @@ export type SignalType =
   | "REBALANCE"      // 再平衡信号
   | "RISK_ALERT"     // 风险预警
   | "MOMENTUM"       // 动量信号
-  | "MEAN_REVERT";   // 均值回归信号
+  | "MEAN_REVERT"    // 均值回归信号
+  | "BULLISH"        // 利好信号
+  | "BEARISH";       // 利空信号
 
 export type SignalLevel = "HIGH" | "MEDIUM" | "LOW" | "INFO";
 

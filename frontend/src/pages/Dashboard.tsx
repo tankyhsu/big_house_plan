@@ -107,7 +107,7 @@ export default function Dashboard() {
       </Row>
 
       {/* 明细列表 */}
-      <PositionTable data={pos} loading={loading} />
+      <PositionTable data={pos} loading={loading} signals={monthlySignals} />
     </Space>
   );
 }

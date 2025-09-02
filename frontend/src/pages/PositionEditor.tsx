@@ -72,6 +72,7 @@ export default function PositionEditor() {
     loadSignals();
   }, []);
 
+
   // includeZero 变化时刷新
   useEffect(() => {
     load(includeZero);

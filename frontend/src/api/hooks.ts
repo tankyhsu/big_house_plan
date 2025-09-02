@@ -47,6 +47,21 @@ export async function fetchAllSignals(type?: string, ts_code?: string, startDate
   const { data } = await client.get("/api/signal/all", { params });
   return data;
 }
+
+export interface SignalCreatePayload {
+  trade_date: string;           // YYYY-MM-DD format
+  ts_code?: string;            // 标的代码（与category_id二选一）
+  category_id?: number;        // 类别ID（与ts_code二选一）
+  level: "HIGH" | "MEDIUM" | "LOW" | "INFO";
+  type: string;                // 信号类型
+  message: string;             // 信号描述
+}
+
+export async function createSignal(payload: SignalCreatePayload) {
+  const { data } = await client.post("/api/signal/create", payload);
+  return data;
+}
+
 export async function postCalc(date: string) {
   const { data } = await client.post("/api/calc", { date });
   return data;

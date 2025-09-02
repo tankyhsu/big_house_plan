@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
-import { Select, Space, Table, Tag, Typography, Card, Row, Col, Statistic, Button, DatePicker } from "antd";
+import { Select, Space, Table, Tag, Typography, Card, Row, Col, Statistic, Button, DatePicker, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { Dayjs } from "dayjs";
 import { fetchAllSignals } from "../api/hooks";
+import client from "../api/client";
 import type { SignalRow, SignalType, SignalLevel } from "../api/types";
-import { ReloadOutlined, AlertOutlined } from "@ant-design/icons";
+import { ReloadOutlined, AlertOutlined, PlusOutlined, HistoryOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { SIGNAL_CONFIG, LEVEL_CONFIG } from "../utils/signalConfig";
+import CreateSignalModal from "../components/CreateSignalModal";
 
 export default function SignalsPage() {
   const [signals, setSignals] = useState<SignalRow[]>([]);
@@ -17,6 +19,8 @@ export default function SignalsPage() {
     const start = end.subtract(1, "month");
     return [start, end];
   });
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [rebuildLoading, setRebuildLoading] = useState(false);
 
   const loadSignals = async () => {
     setLoading(true);
@@ -34,6 +38,19 @@ export default function SignalsPage() {
       console.error("Failed to load signals:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRebuildHistorical = async () => {
+    setRebuildLoading(true);
+    try {
+      const { data } = await client.post("/api/signal/rebuild-historical");
+      message.success(`历史信号重建完成：生成${data.generated_signals}个信号，时间范围：${data.date_range}`);
+      await loadSignals(); // 重新加载信号列表
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "重建历史信号失败");
+    } finally {
+      setRebuildLoading(false);
     }
   };
 
@@ -169,6 +186,21 @@ export default function SignalsPage() {
           <Button icon={<ReloadOutlined />} onClick={loadSignals}>
             刷新
           </Button>
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />} 
+            onClick={() => setCreateModalOpen(true)}
+          >
+            创建信号
+          </Button>
+          <Button 
+            icon={<HistoryOutlined />}
+            loading={rebuildLoading}
+            onClick={handleRebuildHistorical}
+            title="重建所有历史信号，找到首次触发止盈/止损的正确日期"
+          >
+            重建历史信号
+          </Button>
         </Space>
       </div>
 
@@ -247,6 +279,14 @@ export default function SignalsPage() {
           size="small"
         />
       </Card>
+
+      <CreateSignalModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSuccess={() => {
+          loadSignals();
+        }}
+      />
     </Space>
   );
 }

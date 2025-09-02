@@ -283,3 +283,55 @@ def aggregate_kpi(start_yyyymmdd: str, end_yyyymmdd: str, period: str = "day") -
             "ret": k["kpi"]["ret"],
         })
     return out
+
+
+def create_manual_signal(trade_date: str, ts_code: str|None, category_id: int|None, level: str, type: str, message: str) -> int:
+    """
+    手动创建信号，用于添加政策面或市场环境变化的信号
+    
+    Args:
+        trade_date: 信号日期 YYYY-MM-DD
+        ts_code: 标的代码（可选）
+        category_id: 类别ID（可选）
+        level: 信号级别 (HIGH/MEDIUM/LOW/INFO)
+        type: 信号类型
+        message: 信号描述
+        
+    Returns:
+        signal_id: 创建的信号ID
+    """
+    from ..repository.portfolio_repo import insert_signal_instrument, insert_signal_category
+    
+    with get_conn() as conn:
+        if ts_code:
+            # 验证标的代码存在
+            existing = conn.execute("SELECT id FROM instrument WHERE ts_code=?", (ts_code,)).fetchone()
+            if not existing:
+                raise ValueError(f"标的代码 {ts_code} 不存在")
+                
+            insert_signal_instrument(conn, trade_date, ts_code, level, type, message)
+            
+            # 获取插入的信号ID
+            signal_id = conn.execute(
+                "SELECT id FROM signal WHERE trade_date=? AND ts_code=? AND type=? ORDER BY id DESC LIMIT 1",
+                (trade_date, ts_code, type)
+            ).fetchone()
+            
+        elif category_id:
+            # 验证类别ID存在
+            existing = conn.execute("SELECT id FROM category WHERE id=?", (category_id,)).fetchone()
+            if not existing:
+                raise ValueError(f"类别ID {category_id} 不存在")
+                
+            insert_signal_category(conn, trade_date, category_id, level, type, message)
+            
+            # 获取插入的信号ID
+            signal_id = conn.execute(
+                "SELECT id FROM signal WHERE trade_date=? AND category_id=? AND type=? ORDER BY id DESC LIMIT 1",
+                (trade_date, category_id, type)
+            ).fetchone()
+        else:
+            raise ValueError("ts_code 和 category_id 至少提供一个")
+            
+        conn.commit()
+        return signal_id[0] if signal_id else None

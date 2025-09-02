@@ -22,6 +22,8 @@ const SIGNAL_LABELS: Record<string, string> = {
   'risk_alert': '风险预警',
   'momentum': '动量',
   'mean_revert': '均值回归',
+  'bullish': '利好',
+  'bearish': '利空',
 };
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -35,6 +37,8 @@ const SIGNAL_COLORS: Record<string, string> = {
   'risk_alert': '#eb2f96',
   'momentum': '#13c2c2',
   'mean_revert': '#2f54eb',
+  'bullish': '#52c41a',
+  'bearish': '#fa8c16',
 };
 
 export default function KpiCards({ marketValue, cost, pnl, ret, signals, priceFallback, dateText }: Props) {
