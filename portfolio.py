@@ -311,8 +311,8 @@ def cmd_calc(args):
         conn.execute(
             """
             INSERT OR REPLACE INTO category_daily
-            (trade_date, category_id, market_value, cost, pnl, ret, actual_units, gap_units, overweight)
-            VALUES (?,?,?,?,?,?,?,?,?)
+            (trade_date, category_id, market_value, cost, pnl, ret, overweight)
+            VALUES (?,?,?,?,?,?,?)
             """,
             (
                 date_dash,
@@ -321,8 +321,6 @@ def cmd_calc(args):
                 float(r["cost"]),
                 float(r["pnl"]),
                 float(r["ret"]) if r["ret"] is not None else None,
-                float(r["actual_units"]),
-                float(r["gap_units"]),
                 int(r["overweight"]),
             ),
         )

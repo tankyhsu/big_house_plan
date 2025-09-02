@@ -57,7 +57,9 @@ def calc(date_yyyymmdd: str, log: LogContext):
 
         cat["pnl"] = cat["mv"] - cat["cost"]
         cat["ret"] = cat.apply(lambda r: (r["pnl"]/r["cost"]) if r["cost"]>0 else None, axis=1)
-        cat["actual_units"] = cat["mv"] / unit_amount
+        
+        # 实时计算份数用于判断overweight，但不存储
+        cat["actual_units"] = cat["cost"] / unit_amount
         cat["gap_units"] = cat["target_units"] - cat["actual_units"]
         def out_of_band(r):
             lower = r["target_units"] * (1 - band); upper = r["target_units"] * (1 + band)
@@ -73,8 +75,6 @@ def calc(date_yyyymmdd: str, log: LogContext):
                 float(r["cost"]),
                 float(r["pnl"]),
                 float(r["ret"]) if r["ret"] is not None else None,
-                float(r["actual_units"]),
-                float(r["gap_units"]),
                 int(r["overweight"]),
             )
             if int(r["overweight"]) == 1:

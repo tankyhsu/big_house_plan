@@ -86,7 +86,7 @@ def list_category(date_yyyymmdd: str) -> list[dict]:
         agg = cats.merge(agg, on="category_id", how="left").fillna({"market_value":0.0, "cost":0.0, "pnl":0.0})
 
         # 份数/越带
-        agg["actual_units"] = agg["market_value"] / unit_amount
+        agg["actual_units"] = agg["cost"] / unit_amount
         agg["gap_units"] = agg["target_units"] - agg["actual_units"]
 
         def out_of_band(r):

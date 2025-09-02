@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { Card, Form, InputNumber, Button, Space, message, Switch, Typography, Divider } from "antd";
+import { Card, Form, InputNumber, Button, message, Divider } from "antd";
 import { fetchSettings, updateSettings } from "../api/hooks";
 
 export default function SettingsPage() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [recalc, setRecalc] = useState(true);
 
   useEffect(() => {
     fetchSettings().then((cfg) => {
@@ -27,8 +26,8 @@ export default function SettingsPage() {
         stop_gain_pct: Number(vals.stop_gain_pct) / 100,
         overweight_band: Number(vals.overweight_band) / 100,
       };
-      await updateSettings(updates, recalc);
-      message.success(`已保存。${recalc ? "已按新份额重算今日快照。" : ""}`);
+      await updateSettings(updates);
+      message.success("设置已保存，份数显示将自动更新。");
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(e?.message || "保存失败");
@@ -77,10 +76,6 @@ export default function SettingsPage() {
           <InputNumber controls={false} precision={2} style={{ width: 240 }} placeholder="例如 20 表示 ±20%" />
         </Form.Item>
 
-        <Space align="center" style={{ marginTop: 8, marginBottom: 12 }}>
-          <Switch checked={recalc} onChange={setRecalc} />
-          <Typography.Text>保存后重算今日快照</Typography.Text>
-        </Space>
 
         {/* 按钮放最底部、单列、占满宽度 */}
         <Form.Item style={{ marginTop: 16 }}>

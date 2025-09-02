@@ -147,8 +147,8 @@ export async function fetchSettings() {
   };
 }
 
-export async function updateSettings(updates: Record<string, any>, recalcToday: boolean = true) {
-  const { data } = await client.post("/api/settings/update", { updates, recalc_today: recalcToday });
+export async function updateSettings(updates: Record<string, any>) {
+  const { data } = await client.post("/api/settings/update", { updates });
   return data as { message: string; updated: string[] };
 }
 

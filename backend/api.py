@@ -195,18 +195,13 @@ def api_settings_get():
 
 class SettingsUpdateBody(BaseModel):
     updates: dict
-    recalc_today: bool | None = True  # 默认更新即重算今天
 
 @app.post("/api/settings/update")
 def api_settings_update(body: SettingsUpdateBody):
     log = LogContext("SETTINGS_UPDATE").set_payload(body.dict())
     try:
         updated_keys = update_config(body.updates, log)
-        # 若 unit_amount 变更，建议重算当天（也可前端传 false 关闭）
-        if body.recalc_today and ("unit_amount" in updated_keys):
-            from datetime import datetime
-            today = datetime.now().strftime("%Y%m%d")
-            calc(today, LogContext("CALC_AFTER_UNIT_AMOUNT_UPDATE"))
+        # unit_amount 变更后不需要重算，因为份数现在是实时计算的
         log.write("OK")
         return {"message": "ok", "updated": updated_keys}
     except Exception as e:

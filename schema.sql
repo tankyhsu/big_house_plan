@@ -92,8 +92,6 @@ CREATE TABLE
     cost REAL NOT NULL,
     pnl REAL NOT NULL,
     ret REAL,
-    actual_units REAL,
-    gap_units REAL,
     overweight INTEGER DEFAULT 0,
     PRIMARY KEY (trade_date, category_id)
   );
