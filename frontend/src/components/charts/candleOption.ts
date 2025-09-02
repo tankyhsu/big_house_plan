@@ -67,11 +67,35 @@ export function buildCandleOption(params: {
     };
   }).filter(signal => signal !== null) as typeof signals;
   
-  const stopGainSignals = processedSignals.filter(s => s.type === 'STOP_GAIN');
-  const stopLossSignals = processedSignals.filter(s => s.type === 'STOP_LOSS');
-  const otherSignals = processedSignals.filter(s => s.type !== 'STOP_GAIN' && s.type !== 'STOP_LOSS');
-  // console.log('🔥 Stop gain signals:', stopGainSignals);
-  // console.log('⚠️ Stop loss signals:', stopLossSignals);
+  // Group signals by type for different visual representations
+  const signalGroups = processedSignals.reduce((groups, signal) => {
+    if (!groups[signal.type]) {
+      groups[signal.type] = [];
+    }
+    groups[signal.type].push(signal);
+    return groups;
+  }, {} as Record<string, typeof processedSignals>);
+  
+  // Define signal type configurations for visual representation
+  const signalConfigs: Record<string, {
+    symbol: string;
+    color: string;
+    emoji: string;
+    name: string;
+    position: 'top' | 'bottom';
+    offsetMultiplier: number;
+  }> = {
+    'STOP_GAIN': { symbol: 'pin', color: '#f04438', emoji: '🔥', name: '止盈', position: 'top', offsetMultiplier: 1.02 },
+    'STOP_LOSS': { symbol: 'pin', color: '#ff6b35', emoji: '⚠️', name: '止损', position: 'bottom', offsetMultiplier: 0.98 },
+    'BUY_SIGNAL': { symbol: 'triangle', color: '#10b981', emoji: '📈', name: '买入', position: 'top', offsetMultiplier: 1.015 },
+    'SELL_SIGNAL': { symbol: 'triangle', color: '#ef4444', emoji: '📉', name: '卖出', position: 'top', offsetMultiplier: 1.015 },
+    'REBALANCE': { symbol: 'diamond', color: '#8b5cf6', emoji: '⚖️', name: '再平衡', position: 'top', offsetMultiplier: 1.025 },
+    'ALERT': { symbol: 'circle', color: '#f59e0b', emoji: '⚡', name: '提醒', position: 'top', offsetMultiplier: 1.01 },
+    'DIVIDEND': { symbol: 'rect', color: '#06b6d4', emoji: '💰', name: '分红', position: 'top', offsetMultiplier: 1.005 },
+    'SPLIT': { symbol: 'rect', color: '#84cc16', emoji: '🔄', name: '拆股', position: 'top', offsetMultiplier: 1.005 },
+    'NEWS': { symbol: 'circle', color: '#64748b', emoji: '📰', name: '消息', position: 'top', offsetMultiplier: 1.008 },
+    'EARNINGS': { symbol: 'rect', color: '#7c3aed', emoji: '📊', name: '财报', position: 'top', offsetMultiplier: 1.012 }
+  };
 
   // 布局参数
   const padTop = 12;
@@ -161,109 +185,75 @@ export function buildCandleOption(params: {
   series.push({ type: 'scatter', name: 'BUY', data: buys.map(p => [p.date, p.price]), symbol: 'triangle', symbolSize: 8, itemStyle: { color: upColor }, xAxisIndex: 0, yAxisIndex: 0, z: 3 });
   series.push({ type: 'scatter', name: 'SELL', data: sells.map(p => [p.date, p.price]), symbol: 'triangle', symbolRotate: 180, symbolSize: 8, itemStyle: { color: downColor }, xAxisIndex: 0, yAxisIndex: 0, z: 3 });
   
-  // Add signal markers
-  if (stopGainSignals.length > 0) {
-    series.push({ 
-      type: 'scatter', 
-      name: '止盈', 
-      data: stopGainSignals.map(s => {
-        // Find the high price for that date to position signal above the candle
-        const item = items.find(it => it.date === s.date);
-        const highPrice = item ? (item.high ?? item.close) : s.price;
-        const signalPrice = highPrice * 1.02; // Position 2% above the high
+  // Add all signal types with unified rendering logic
+  Object.entries(signalGroups).forEach(([signalType, signalsOfType]) => {
+    if (signalsOfType.length === 0) return;
+    
+    const config = signalConfigs[signalType] || {
+      symbol: 'circle',
+      color: '#1890ff',
+      emoji: '📍',
+      name: signalType,
+      position: 'top' as const,
+      offsetMultiplier: 1.01
+    };
+    
+    series.push({
+      type: 'scatter',
+      name: config.name,
+      data: signalsOfType.map(signal => {
+        const item = items.find(it => it.date === signal.date);
+        let signalPrice: number;
         
-        return { 
-          value: [s.date, signalPrice],
-          label: { 
-            show: true, 
-            position: 'top', 
-            formatter: '🔥止盈', 
-            textStyle: { 
-              color: '#f04438', 
-              fontSize: 12,
+        if (config.position === 'bottom') {
+          const lowPrice = item ? (item.low ?? item.close) : signal.price;
+          signalPrice = lowPrice * config.offsetMultiplier;
+        } else {
+          const highPrice = item ? (item.high ?? item.close) : signal.price;
+          signalPrice = highPrice * config.offsetMultiplier;
+        }
+        
+        return {
+          value: [signal.date, signalPrice],
+          tooltip: {
+            formatter: `${config.emoji}${config.name}: ${signal.message || signal.type}`
+          },
+          label: {
+            show: true,
+            position: config.position,
+            formatter: `${config.emoji}${config.name}`,
+            textStyle: {
+              color: config.color,
+              fontSize: 11,
               fontWeight: 'bold',
               backgroundColor: '#fff',
-              padding: [2, 4],
+              padding: [1, 3],
               borderRadius: 3,
-              borderColor: '#f04438',
-              borderWidth: 1
+              borderColor: config.color,
+              borderWidth: 1,
+              shadowColor: config.color,
+              shadowBlur: 3,
+              shadowOffsetY: 1
             }
-          } 
+          }
         };
-      }), 
-      symbol: 'pin', 
-      symbolSize: 16, 
-      symbolRotate: 180,
-      itemStyle: { 
-        color: '#f04438', 
-        borderColor: '#fff', 
+      }),
+      symbol: config.symbol,
+      symbolSize: signalType === 'STOP_GAIN' || signalType === 'STOP_LOSS' ? 16 : 12,
+      symbolRotate: signalType === 'STOP_GAIN' ? 180 : (signalType === 'SELL_SIGNAL' ? 180 : 0),
+      itemStyle: {
+        color: config.color,
+        borderColor: '#fff',
         borderWidth: 2,
-        shadowColor: '#f04438',
-        shadowBlur: 8
-      }, 
-      xAxisIndex: 0, 
-      yAxisIndex: 0, 
-      z: 5 
+        shadowColor: config.color,
+        shadowBlur: 6,
+        shadowOffsetY: 2
+      },
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      z: 5
     });
-  }
-  
-  if (stopLossSignals.length > 0) {
-    series.push({ 
-      type: 'scatter', 
-      name: '止损', 
-      data: stopLossSignals.map(s => {
-        // Find the low price for that date to position signal below the candle
-        const item = items.find(it => it.date === s.date);
-        const lowPrice = item ? (item.low ?? item.close) : s.price;
-        const signalPrice = lowPrice * 0.98; // Position 2% below the low
-        
-        return { 
-          value: [s.date, signalPrice],
-          label: { 
-            show: true, 
-            position: 'bottom', 
-            formatter: '⚠️止损', 
-            textStyle: { 
-              color: '#ff6b35', 
-              fontSize: 12,
-              fontWeight: 'bold',
-              backgroundColor: '#fff',
-              padding: [2, 4],
-              borderRadius: 3,
-              borderColor: '#ff6b35',
-              borderWidth: 1
-            }
-          } 
-        };
-      }), 
-      symbol: 'pin', 
-      symbolSize: 16, 
-      itemStyle: { 
-        color: '#ff6b35', 
-        borderColor: '#fff', 
-        borderWidth: 2,
-        shadowColor: '#ff6b35',
-        shadowBlur: 8
-      }, 
-      xAxisIndex: 0, 
-      yAxisIndex: 0, 
-      z: 5 
-    });
-  }
-  
-  if (otherSignals.length > 0) {
-    series.push({ 
-      type: 'scatter', 
-      name: '信号', 
-      data: otherSignals.map(s => ({ value: [s.date, s.price], label: { show: true, position: 'top', formatter: '信号', textStyle: { color: '#fff', fontSize: 10 } } })), 
-      symbol: 'circle', 
-      symbolSize: 10, 
-      itemStyle: { color: '#1890ff', borderColor: '#fff', borderWidth: 1 }, 
-      xAxisIndex: 0, 
-      yAxisIndex: 0, 
-      z: 4 
-    });
-  }
+  });
 
   let panelIdx = 1;
   function addPanelGrid(panelKey: 'vol'|'macd'|'kdj'|'bias') {
@@ -309,9 +299,14 @@ export function buildCandleOption(params: {
   const priceLegendData: string[] = [tsCode, ...maList.map(p => `MA${p}`)];
   if (buys.length > 0) priceLegendData.push('BUY');
   if (sells.length > 0) priceLegendData.push('SELL');
-  if (stopGainSignals.length > 0) priceLegendData.push('止盈');
-  if (stopLossSignals.length > 0) priceLegendData.push('止损');
-  if (otherSignals.length > 0) priceLegendData.push('信号');
+  
+  // Add all signal types to legend
+  Object.entries(signalGroups).forEach(([signalType, signalsOfType]) => {
+    if (signalsOfType.length > 0) {
+      const config = signalConfigs[signalType];
+      priceLegendData.push(config ? config.name : signalType);
+    }
+  });
   legends.push({ type: 'plain', top: (pricePanel.top || 0) - legendH + 2, left: leftPad, right: 24, data: priceLegendData, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: '#667085' } });
   for (const key of restPanels) {
     const p = panels.find(pp => pp.key === key);
