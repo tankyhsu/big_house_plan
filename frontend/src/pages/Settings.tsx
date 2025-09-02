@@ -11,6 +11,7 @@ export default function SettingsPage() {
       form.setFieldsValue({
         unit_amount: cfg.unit_amount ?? 3000,
         stop_gain_pct: (cfg.stop_gain_pct ?? 0.3) * 100,     // 百分数显示
+        stop_loss_pct: (cfg.stop_loss_pct ?? 0.15) * 100,    // 百分数显示
         overweight_band: (cfg.overweight_band ?? 0.2) * 100, // 百分数显示
       });
     });
@@ -24,6 +25,7 @@ export default function SettingsPage() {
       const updates: Record<string, any> = {
         unit_amount: Number(vals.unit_amount),
         stop_gain_pct: Number(vals.stop_gain_pct) / 100,
+        stop_loss_pct: Number(vals.stop_loss_pct) / 100,
         overweight_band: Number(vals.overweight_band) / 100,
       };
       await updateSettings(updates);
@@ -62,6 +64,18 @@ export default function SettingsPage() {
           ]}
         >
           <InputNumber controls={false} precision={2} style={{ width: 240 }} placeholder="例如 30 表示 +30%" />
+        </Form.Item>
+
+        <Form.Item
+          label="止损阈值（%）"
+          name="stop_loss_pct"
+          tooltip="当标的收益率 ≤ 此百分比的负值时触发止损信号"
+          rules={[
+            { required: true, message: "请输入止损阈值" },
+            { type: "number", min: 0, message: "不能小于 0" },
+          ]}
+        >
+          <InputNumber controls={false} precision={2} style={{ width: 240 }} placeholder="例如 15 表示 -15%" />
         </Form.Item>
 
         <Form.Item

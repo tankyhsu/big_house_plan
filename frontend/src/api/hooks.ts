@@ -23,8 +23,28 @@ export async function fetchPosition(date: string): Promise<PositionRow[]> {
   const { data } = await client.get("/api/position", { params: { date } });
   return data;
 }
-export async function fetchSignals(date: string, type: "ALL" | "STOP_GAIN" | "OVERWEIGHT" = "ALL"): Promise<SignalRow[]> {
-  const { data } = await client.get("/api/signal", { params: { date, type } });
+export async function fetchSignals(date: string, type?: string): Promise<SignalRow[]> {
+  const params: any = { date };
+  if (type && type !== "ALL") {
+    params.type = type;
+  }
+  const { data } = await client.get("/api/signal", { params });
+  return data;
+}
+
+export async function fetchSignalsByTsCode(date: string, ts_code: string): Promise<SignalRow[]> {
+  const { data } = await client.get("/api/signal", { params: { date, ts_code } });
+  return data;
+}
+
+export async function fetchAllSignals(type?: string, ts_code?: string, startDate?: string, endDate?: string, limit?: number): Promise<SignalRow[]> {
+  const params: any = {};
+  if (type && type !== "ALL") params.type = type;
+  if (ts_code) params.ts_code = ts_code;
+  if (startDate) params.start_date = startDate;
+  if (endDate) params.end_date = endDate;
+  if (limit) params.limit = limit;
+  const { data } = await client.get("/api/signal/all", { params });
   return data;
 }
 export async function postCalc(date: string) {
@@ -142,6 +162,7 @@ export async function fetchSettings() {
   return data as {
     unit_amount: number;
     stop_gain_pct: number;
+    stop_loss_pct: number;
     overweight_band: number;
     // ... 其它配置字段
   };

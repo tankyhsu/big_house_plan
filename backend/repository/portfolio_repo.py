@@ -5,7 +5,6 @@ from sqlite3 import Connection
 def clear_day(conn: Connection, date_dash: str):
     conn.execute("DELETE FROM portfolio_daily WHERE trade_date=?", (date_dash,))
     conn.execute("DELETE FROM category_daily WHERE trade_date=?", (date_dash,))
-    conn.execute("DELETE FROM signal WHERE trade_date=?", (date_dash,))
 
 
 def upsert_portfolio_daily(
@@ -34,28 +33,38 @@ def upsert_category_daily(
     cost: float,
     pnl: float,
     ret: Optional[float],
-    actual_units: float,
-    gap_units: float,
     overweight: int,
 ):
     conn.execute(
         """INSERT OR REPLACE INTO category_daily
-               (trade_date, category_id, market_value, cost, pnl, ret, actual_units, gap_units, overweight)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-        (date_dash, category_id, market_value, cost, pnl, ret, actual_units, gap_units, overweight),
+               (trade_date, category_id, market_value, cost, pnl, ret, overweight)
+               VALUES (?,?,?,?,?,?,?)""",
+        (date_dash, category_id, market_value, cost, pnl, ret, overweight),
     )
 
 
 def insert_signal_category(conn: Connection, date_dash: str, category_id: int, level: str, typ: str, message: str):
-    conn.execute(
-        "INSERT INTO signal(trade_date, category_id, level, type, message) VALUES (?,?,?,?,?)",
-        (date_dash, category_id, level, typ, message),
-    )
+    existing = conn.execute(
+        "SELECT id FROM signal WHERE trade_date=? AND category_id=? AND type=?",
+        (date_dash, category_id, typ)
+    ).fetchone()
+    
+    if not existing:
+        conn.execute(
+            "INSERT INTO signal(trade_date, category_id, level, type, message) VALUES (?,?,?,?,?)",
+            (date_dash, category_id, level, typ, message),
+        )
 
 
 def insert_signal_instrument(conn: Connection, date_dash: str, ts_code: str, level: str, typ: str, message: str):
-    conn.execute(
-        "INSERT INTO signal(trade_date, ts_code, level, type, message) VALUES (?,?,?,?,?)",
-        (date_dash, ts_code, level, typ, message),
-    )
+    existing = conn.execute(
+        "SELECT id FROM signal WHERE trade_date=? AND ts_code=? AND type=?",
+        (date_dash, ts_code, typ)
+    ).fetchone()
+    
+    if not existing:
+        conn.execute(
+            "INSERT INTO signal(trade_date, ts_code, level, type, message) VALUES (?,?,?,?,?)",
+            (date_dash, ts_code, level, typ, message),
+        )
 

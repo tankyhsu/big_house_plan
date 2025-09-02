@@ -8,7 +8,8 @@ import TxnPage from "./pages/Txn";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import SettingsPage from "./pages/Settings";
 import ReviewPage from "./pages/Review";
-import { SettingOutlined } from "@ant-design/icons";
+import SignalsPage from "./pages/Signals";
+import { SettingOutlined, AlertOutlined } from "@ant-design/icons";
 
 const { Header, Content, Footer } = Layout;
 
@@ -18,6 +19,7 @@ function TopNav() {
     (location.pathname.startsWith("/positions") || location.pathname.startsWith("/instrument")) ? ["positions"] :
     location.pathname.startsWith("/txn") ? ["txn"] :
     location.pathname.startsWith("/review") ? ["review"] :
+    location.pathname.startsWith("/signals") ? ["signals"] :
     location.pathname.startsWith("/settings") ? ["settings"] :
     ["dashboard"];
 
@@ -31,6 +33,7 @@ function TopNav() {
         items={[
           { key: "dashboard", label: <Link to="/">Dashboard</Link> },
           { key: "review", label: <Link to="/review">复盘分析</Link> },
+          { key: "signals", icon: <AlertOutlined />, label: <Link to="/signals">交易信号</Link> },
           { key: "positions", label: <Link to="/positions">持仓编辑</Link> },
           { key: "txn", label: <Link to="/txn">交易记录</Link> },
           { key: "settings", icon: <SettingOutlined />, label:  <Link to="/settings">系统设置</Link> }
@@ -50,11 +53,12 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/review" element={<ReviewPage />} />
+            <Route path="/signals" element={<SignalsPage />} />
             <Route path="/positions" element={<PositionEditor />} />
             <Route path="/instrument/:ts_code" element={<InstrumentDetail />} />
             <Route path="/txn" element={<TxnPage />} />
-            <Route path="*" element={<Dashboard />} />
             <Route path="/settings" element={<SettingsPage />} />  
+            <Route path="*" element={<Dashboard />} />
           </Routes>
         </Content>
         <Footer style={{ textAlign: "center", color: "#98A2B3" }}>

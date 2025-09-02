@@ -41,15 +41,15 @@ def get_dashboard(date_yyyymmdd: str) -> dict:
 
         # 当日信号数量来自快照（如果未calc，可能为0）
         sig = conn.execute("SELECT type, COUNT(1) c FROM signal WHERE trade_date=? GROUP BY type", (d,)).fetchall()
-        counts = {"stop_gain":0,"overweight":0}
+        counts = {"stop_gain":0,"stop_loss":0}
         for r in sig:
             if r["type"] == "STOP_GAIN": counts["stop_gain"] = r["c"]
-            if r["type"] == "OVERWEIGHT": counts["overweight"] = r["c"]
+            if r["type"] == "STOP_LOSS": counts["stop_loss"] = r["c"]
 
     return {
         "date": d,
         "kpi": {"market_value": mv, "cost": cost, "unrealized_pnl": pnl, "ret": ret},
-        "signals": {"stop_gain": counts["stop_gain"], "overweight": counts["overweight"]},
+        "signals": {"stop_gain": counts["stop_gain"], "stop_loss": counts["stop_loss"]},
         "price_fallback_used": used_fallback
     }
 
@@ -173,13 +173,58 @@ def list_position(date_yyyymmdd: str) -> list[dict]:
         })
     return out
 
-def list_signal(date_yyyymmdd: str, typ: str|None) -> list[dict]:
+def list_signal(date_yyyymmdd: str, typ: str|None = None, ts_code: str|None = None) -> list[dict]:
     d = yyyyMMdd_to_dash(date_yyyymmdd)
     with get_conn() as conn:
+        sql = "SELECT * FROM signal WHERE trade_date=?"
+        params = [d]
+        
         if typ and typ.upper() != "ALL":
-            rows = conn.execute("SELECT * FROM signal WHERE trade_date=? AND type=? ORDER BY level DESC", (d,typ.upper())).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM signal WHERE trade_date=? ORDER BY level DESC", (d,)).fetchall()
+            sql += " AND type=?"
+            params.append(typ.upper())
+            
+        if ts_code:
+            sql += " AND ts_code=?"
+            params.append(ts_code)
+            
+        sql += " ORDER BY level DESC, type"
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+def list_signal_all(typ: str|None = None, ts_code: str|None = None, start_date: str|None = None, end_date: str|None = None, limit: int = 100) -> list[dict]:
+    """
+    获取历史信号，按日期倒序，包含标的名称
+    支持日期范围筛选
+    """
+    with get_conn() as conn:
+        sql = """
+        SELECT s.*, i.name 
+        FROM signal s 
+        LEFT JOIN instrument i ON s.ts_code = i.ts_code 
+        WHERE 1=1
+        """
+        params = []
+        
+        if typ and typ.upper() != "ALL":
+            sql += " AND s.type=?"
+            params.append(typ.upper())
+            
+        if ts_code:
+            sql += " AND s.ts_code=?"
+            params.append(ts_code)
+            
+        if start_date:
+            sql += " AND s.trade_date >= ?"
+            params.append(start_date)
+            
+        if end_date:
+            sql += " AND s.trade_date <= ?"
+            params.append(end_date)
+            
+        sql += " ORDER BY s.trade_date DESC, s.id DESC LIMIT ?"
+        params.append(limit)
+        
+        rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 

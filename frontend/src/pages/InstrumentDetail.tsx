@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, Select, Space, Typography, message, Table, DatePicker, Row, Col, Tabs, Tag } from "antd";
+import { Button, Card, Form, Input, Select, Space, Typography, message, Table, DatePicker, Row, Col, Tabs, Tag, Tooltip } from "antd";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne } from "../api/hooks";
+import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals } from "../api/hooks";
 import CandleChart from "../components/charts/CandleChart";
-import type { CategoryLite, InstrumentDetail } from "../api/types";
+import type { CategoryLite, InstrumentDetail, SignalRow } from "../api/types";
 import dayjs, { Dayjs } from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 
@@ -23,6 +23,8 @@ export default function InstrumentDetail() {
   });
   const [posInfo, setPosInfo] = useState<{ shares: number; avg_cost: number; opening_date?: string | null } | null>(null);
   const [lastPrice, setLastPrice] = useState<{ date: string | null; close: number | null; prevClose: number | null }>({ date: null, close: null, prevClose: null });
+  const [signals, setSignals] = useState<SignalRow[]>([]);
+  const [signalsLoading, setSignalsLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -78,6 +80,24 @@ export default function InstrumentDetail() {
         setPosInfo({ shares: 0, avg_cost: 0, opening_date: null });
       }
     }).catch(() => setPosInfo(null));
+
+    // 获取该标的的历史信号
+    const loadSignals = async () => {
+      if (!ts_code) return;
+      setSignalsLoading(true);
+      try {
+        const signalData = await fetchAllSignals(undefined, ts_code, undefined, undefined, 10);
+        console.log('🔍 Loaded signals for', ts_code, ':', signalData);
+        setSignals(signalData || []);
+      } catch (error) {
+        console.error("Failed to load signals for ts_code:", error);
+        setSignals([]);
+      } finally {
+        setSignalsLoading(false);
+      }
+    };
+    
+    loadSignals();
   }, [ts_code]);
 
   const loadTxns = async () => {
@@ -158,9 +178,25 @@ export default function InstrumentDetail() {
               <span style={{ color: '#667085' }}>
                 {inst.cat_name || '-'}{inst.cat_sub ? ` / ${inst.cat_sub}` : ''}
               </span>
-              <Tag color={inst.active ? 'green' : 'default'} style={{ marginLeft: 4 }}>
-                {inst.active ? '启用' : '停用'}
-              </Tag>
+              {signals.length > 0 && (
+                <div style={{ marginLeft: 8 }}>
+                  {signals.map((signal, idx) => {
+                    const color = signal.type === "STOP_GAIN" ? "red" : 
+                                 signal.type === "STOP_LOSS" ? "volcano" : 
+                                 signal.type === "UNDERWEIGHT" ? "blue" : "gray";
+                    const label = signal.type === "STOP_GAIN" ? "止盈" :
+                                 signal.type === "STOP_LOSS" ? "止损" :
+                                 signal.type === "UNDERWEIGHT" ? "低配" : signal.type;
+                    return (
+                      <Tooltip key={idx} title={signal.message}>
+                        <Tag color={color} style={{ marginLeft: 2 }}>
+                          {label}
+                        </Tag>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div>
               {(() => {
@@ -247,7 +283,19 @@ export default function InstrumentDetail() {
                 key: 'kline',
                 label: 'K 线',
                 children: (
-                  <CandleChart tsCode={ts_code} months={6} height={320} title="K 线（可调周期）" secType={inst?.type} />
+                  <CandleChart 
+                    tsCode={ts_code} 
+                    months={6} 
+                    height={320} 
+                    title="K 线（可调周期）" 
+                    secType={inst?.type}
+                    signals={signals.map(signal => ({
+                      date: signal.trade_date, // 使用信号实际发生的日期
+                      price: null, // 让CandleChart从K线数据中查找对应日期的价格
+                      type: signal.type,
+                      message: signal.message
+                    }))}
+                  />
                 ),
               });
             }

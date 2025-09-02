@@ -13,9 +13,10 @@ type Props = {
   title?: string;
   secType?: string; // STOCK | ETF | FUND | CASH
   stretch?: boolean; // 自适应拉伸高度：按面板自动增长
+  signals?: Array<{ date: string; price: number | null; type: string; message: string }>; // 信号数据
 };
 
-export default function CandleChart({ tsCode, months = 6, height = 300, title = "K线（近6个月）", secType, stretch = true }: Props) {
+export default function CandleChart({ tsCode, months = 6, height = 300, title = "K线（近6个月）", secType, stretch = true, signals = [] }: Props) {
   const { items, loading, range, setRange, buys, sells } = useCandleData({ tsCode, months });
   const [maInput, setMaInput] = useState<string>("20,30,60");
   const [maList, setMaList] = useState<number[]>([20, 30, 60]);
@@ -42,8 +43,8 @@ export default function CandleChart({ tsCode, months = 6, height = 300, title = 
 
   // New: decoupled builder usage (keeps layout identical)
   const built = useMemo(
-    () => buildCandleOption({ items: items as any, tsCode, secType, maList, buys, sells, viewportH, fullscreen }),
-    [items, tsCode, secType, maList, buys, sells, viewportH, fullscreen]
+    () => buildCandleOption({ items: items as any, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen }),
+    [items, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen]
   );
 
   // 现金类不展示 K 线与指标

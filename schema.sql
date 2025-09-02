@@ -69,7 +69,8 @@ CREATE TABLE
     ts_code TEXT PRIMARY KEY,
     shares REAL NOT NULL DEFAULT 0,
     avg_cost REAL NOT NULL DEFAULT 0,
-    last_update TEXT
+    last_update TEXT,
+    opening_date TEXT
   );
 
 CREATE TABLE
@@ -106,3 +107,30 @@ CREATE TABLE
     type TEXT,
     message TEXT
   );
+
+CREATE TABLE
+  IF NOT EXISTS operation_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    action TEXT NOT NULL,
+    params TEXT,
+    duration_ms REAL,
+    payload TEXT,
+    error TEXT
+  );
+
+-- 索引用于提高日志查询性能
+CREATE INDEX IF NOT EXISTS idx_log_ts ON operation_log(ts);
+CREATE INDEX IF NOT EXISTS idx_log_action ON operation_log(action);
+
+-- 信号表说明：
+-- 存储历史交易信号，每个标的每种信号类型在特定日期只能有一条记录
+-- trade_date: 信号首次触发的日期 (YYYY-MM-DD格式)
+-- ts_code: 标的代码 (与instrument.ts_code关联)
+-- category_id: 类别ID (与category.id关联，用于类别级信号)
+-- level: 信号级别 (HIGH/MEDIUM/LOW/INFO)
+-- type: 信号类型 (STOP_GAIN/STOP_LOSS/BUY_SIGNAL/SELL_SIGNAL/REBALANCE/RISK_ALERT等)
+-- message: 信号描述信息
+--
+-- 重要：信号记录是历史性的，不应在重新计算时被清除
+-- calc_svc中的insert_signal_instrument/insert_signal_category会自动去重

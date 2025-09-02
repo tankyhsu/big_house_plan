@@ -6,6 +6,7 @@ from .utils import to_float_safe
 DEFAULTS = {
     "unit_amount": "3000",
     "stop_gain_pct": "0.30",
+    "stop_loss_pct": "0.15",  # 止损阈值，默认-15%
     "overweight_band": "0.20",
     "ma_short": "20",
     "ma_long": "60",
@@ -38,6 +39,7 @@ def get_config() -> dict:
     out = {
         "unit_amount": int(cfg.get("unit_amount", DEFAULTS["unit_amount"])),
         "stop_gain_pct": float(cfg.get("stop_gain_pct", DEFAULTS["stop_gain_pct"])),
+        "stop_loss_pct": float(cfg.get("stop_loss_pct", DEFAULTS["stop_loss_pct"])),
         "overweight_band": float(cfg.get("overweight_band", DEFAULTS["overweight_band"])),
         "ma_short": int(cfg.get("ma_short", DEFAULTS["ma_short"])),
         "ma_long": int(cfg.get("ma_long", DEFAULTS["ma_long"])),

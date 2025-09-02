@@ -22,7 +22,7 @@ from .services.category_svc import create_category, list_categories
 from .services.txn_svc import create_txn, list_txn, bulk_txn
 from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
-from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal, aggregate_kpi
+from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal, list_signal_all, aggregate_kpi
 from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
 from .db import get_conn
 from .repository.instrument_repo import set_active as repo_set_active
@@ -162,12 +162,27 @@ def api_position(date: str = Query(..., pattern=r"^\d{8}$")):
     return list_position(date)
 
 @app.get("/api/signal")
-def api_signal(date: str = Query(..., pattern=r"^\d{8}$"), type: Optional[str] = Query(None)):
+def api_signal(date: str = Query(..., pattern=r"^\d{8}$"), type: Optional[str] = Query(None), ts_code: Optional[str] = Query(None)):
     """
     信号列表：返回当日触发的信号（止盈/配置偏离）。
     type 可选过滤。
+    ts_code 可选按标的代码过滤。
     """
-    return list_signal(date, type)
+    return list_signal(date, type, ts_code)
+
+@app.get("/api/signal/all")
+def api_signal_all(
+    type: Optional[str] = Query(None), 
+    ts_code: Optional[str] = Query(None), 
+    start_date: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD"), 
+    end_date: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD"),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """
+    历史信号列表：返回历史信号，按日期倒序。
+    支持日期范围筛选，默认返回所有信号。
+    """
+    return list_signal_all(type, ts_code, start_date, end_date, limit)
 
 
 # =============================================================================
@@ -176,6 +191,7 @@ def api_signal(date: str = Query(..., pattern=r"^\d{8}$"), type: Optional[str] =
 class SettingsUpdate(BaseModel):
     unit_amount: Optional[float] = None
     stop_gain_pct: Optional[float] = None
+    stop_loss_pct: Optional[float] = None
     overweight_band: Optional[float] = None
     ma_short: Optional[int] = None
     ma_long: Optional[int] = None
@@ -187,7 +203,7 @@ class SettingsUpdate(BaseModel):
 def api_settings_get():
     """获取当前系统配置（unit_amount, 止盈阈值, 配置带宽等；tushare_token 会做掩码）"""
     cfg = get_config()
-    fields = ["unit_amount", "stop_gain_pct", "overweight_band", "ma_short", "ma_long", "ma_risk", "tushare_token"]
+    fields = ["unit_amount", "stop_gain_pct", "stop_loss_pct", "overweight_band", "ma_short", "ma_long", "ma_risk", "tushare_token"]
     out = {k: v for k, v in cfg.items() if k in fields}
     if out.get("tushare_token"):
         out["tushare_token"] = "***masked***"
@@ -198,7 +214,8 @@ class SettingsUpdateBody(BaseModel):
 
 @app.post("/api/settings/update")
 def api_settings_update(body: SettingsUpdateBody):
-    log = LogContext("SETTINGS_UPDATE").set_payload(body.dict())
+    log = LogContext("SETTINGS_UPDATE")
+    log.set_payload(body.dict())
     try:
         updated_keys = update_config(body.updates, log)
         # unit_amount 变更后不需要重算，因为份数现在是实时计算的

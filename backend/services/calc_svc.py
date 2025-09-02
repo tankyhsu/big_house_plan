@@ -13,6 +13,7 @@ def calc(date_yyyymmdd: str, log: LogContext):
     unit_amount = float(cfg.get("unit_amount", 3000))
     band = float(cfg.get("overweight_band", 0.20))
     stop_gain = float(cfg.get("stop_gain_pct", 0.30))
+    stop_loss = float(cfg.get("stop_loss_pct", 0.15))  # 止损阈值
 
     with get_conn() as conn:
         portfolio_repo.clear_day(conn, d)
@@ -77,15 +78,6 @@ def calc(date_yyyymmdd: str, log: LogContext):
                 float(r["ret"]) if r["ret"] is not None else None,
                 int(r["overweight"]),
             )
-            if int(r["overweight"]) == 1:
-                portfolio_repo.insert_signal_category(
-                    conn,
-                    d,
-                    int(r["category_id"]),
-                    "WARN",
-                    "OVERWEIGHT",
-                    f"Category {r['category_id']} beyond allocation band; gap_units={r['gap_units']:.2f}",
-                )
 
         for _, r in df.iterrows():
             if r["cost"] > 0:
@@ -95,9 +87,18 @@ def calc(date_yyyymmdd: str, log: LogContext):
                         conn,
                         d,
                         r["ts_code"],
-                        "INFO",
+                        "HIGH",  # 止盈信号设为高优先级
                         "STOP_GAIN",
-                        f"{r['ts_code']} return {ret:.2%} >= {stop_gain:.0%}",
+                        f"{r['ts_code']} 收益率 {ret:.2%} 达到止盈目标 {stop_gain:.0%}",
+                    )
+                elif ret is not None and ret <= -stop_loss:
+                    portfolio_repo.insert_signal_instrument(
+                        conn,
+                        d,
+                        r["ts_code"],
+                        "HIGH",  # 止损信号设为高优先级
+                        "STOP_LOSS",
+                        f"{r['ts_code']} 收益率 {ret:.2%} 触发止损阈值 -{stop_loss:.0%}",
                     )
         conn.commit()
     log.set_payload({"date": date_yyyymmdd})

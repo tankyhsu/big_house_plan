@@ -2,6 +2,7 @@ import { computeBias, computeKdj, computeMacd, mapVolumes, sma as SMA } from "./
 
 type Item = { date: string; open: number; high?: number | null; low?: number | null; close: number; vol?: number | null };
 type Trade = { date: string; price: number };
+type Signal = { date: string; price: number | null; type: string; message: string };
 
 export function buildCandleOption(params: {
   items: Item[];
@@ -10,16 +11,67 @@ export function buildCandleOption(params: {
   maList: number[];
   buys: Trade[];
   sells: Trade[];
+  signals: Signal[];
   viewportH: number;
   fullscreen: boolean;
 }) {
-  const { items, tsCode, secType, maList, buys, sells, viewportH, fullscreen } = params;
+  const { items, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen } = params;
 
   const dates = items.map(it => it.date);
   const kValues = items.map(it => [it.open, it.close, (it.low ?? it.close), (it.high ?? it.close)]);
   const upColor = "#f04438";   // 红涨
   const downColor = "#12b76a"; // 绿跌
   const volumes = mapVolumes(items as any, upColor, downColor);
+
+  // Process signals early to use in series
+  console.log('📊 Building candle chart with signals:', signals);
+  console.log('📊 K-line data dates range:', items.length > 0 ? `${items[0]?.date} to ${items[items.length-1]?.date}` : 'no data');
+  
+  // Helper function to find price for a signal date
+  const findPriceForDate = (date: string): number | null => {
+    // First try exact match
+    const exactItem = items.find(it => it.date === date);
+    if (exactItem) return exactItem.close;
+    
+    // If no exact match, find the closest earlier date
+    const signalDate = new Date(date);
+    const validItems = items.filter(it => new Date(it.date) <= signalDate);
+    if (validItems.length === 0) return null;
+    
+    // Sort by date descending and take the most recent
+    validItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return validItems[0].close;
+  };
+  
+  // Process signals and resolve prices - only include signals that have valid prices
+  const processedSignals = signals.map(signal => {
+    const price = signal.price || findPriceForDate(signal.date);
+    if (price === null || price === undefined) return null;
+    
+    // If we used a fallback date, use the actual date from K-line data
+    let displayDate = signal.date;
+    if (!items.find(it => it.date === signal.date)) {
+      // Find the closest earlier date that we actually have data for
+      const signalDate = new Date(signal.date);
+      const validItems = items.filter(it => new Date(it.date) <= signalDate);
+      if (validItems.length > 0) {
+        validItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        displayDate = validItems[0].date;
+      }
+    }
+    
+    return {
+      ...signal,
+      date: displayDate, // Use the date we actually have K-line data for
+      price
+    };
+  }).filter(signal => signal !== null) as typeof signals;
+  
+  const stopGainSignals = processedSignals.filter(s => s.type === 'STOP_GAIN');
+  const stopLossSignals = processedSignals.filter(s => s.type === 'STOP_LOSS');
+  const otherSignals = processedSignals.filter(s => s.type !== 'STOP_GAIN' && s.type !== 'STOP_LOSS');
+  console.log('🔥 Stop gain signals:', stopGainSignals);
+  console.log('⚠️ Stop loss signals:', stopLossSignals);
 
   // 布局参数
   const padTop = 12;
@@ -108,6 +160,110 @@ export function buildCandleOption(params: {
   });
   series.push({ type: 'scatter', name: 'BUY', data: buys.map(p => [p.date, p.price]), symbol: 'triangle', symbolSize: 8, itemStyle: { color: upColor }, xAxisIndex: 0, yAxisIndex: 0, z: 3 });
   series.push({ type: 'scatter', name: 'SELL', data: sells.map(p => [p.date, p.price]), symbol: 'triangle', symbolRotate: 180, symbolSize: 8, itemStyle: { color: downColor }, xAxisIndex: 0, yAxisIndex: 0, z: 3 });
+  
+  // Add signal markers
+  if (stopGainSignals.length > 0) {
+    series.push({ 
+      type: 'scatter', 
+      name: '止盈', 
+      data: stopGainSignals.map(s => {
+        // Find the high price for that date to position signal above the candle
+        const item = items.find(it => it.date === s.date);
+        const highPrice = item ? (item.high ?? item.close) : s.price;
+        const signalPrice = highPrice * 1.02; // Position 2% above the high
+        
+        return { 
+          value: [s.date, signalPrice],
+          label: { 
+            show: true, 
+            position: 'top', 
+            formatter: '🔥止盈', 
+            textStyle: { 
+              color: '#f04438', 
+              fontSize: 12,
+              fontWeight: 'bold',
+              backgroundColor: '#fff',
+              padding: [2, 4],
+              borderRadius: 3,
+              borderColor: '#f04438',
+              borderWidth: 1
+            }
+          } 
+        };
+      }), 
+      symbol: 'pin', 
+      symbolSize: 16, 
+      symbolRotate: 180,
+      itemStyle: { 
+        color: '#f04438', 
+        borderColor: '#fff', 
+        borderWidth: 2,
+        shadowColor: '#f04438',
+        shadowBlur: 8
+      }, 
+      xAxisIndex: 0, 
+      yAxisIndex: 0, 
+      z: 5 
+    });
+  }
+  
+  if (stopLossSignals.length > 0) {
+    series.push({ 
+      type: 'scatter', 
+      name: '止损', 
+      data: stopLossSignals.map(s => {
+        // Find the low price for that date to position signal below the candle
+        const item = items.find(it => it.date === s.date);
+        const lowPrice = item ? (item.low ?? item.close) : s.price;
+        const signalPrice = lowPrice * 0.98; // Position 2% below the low
+        
+        return { 
+          value: [s.date, signalPrice],
+          label: { 
+            show: true, 
+            position: 'bottom', 
+            formatter: '⚠️止损', 
+            textStyle: { 
+              color: '#ff6b35', 
+              fontSize: 12,
+              fontWeight: 'bold',
+              backgroundColor: '#fff',
+              padding: [2, 4],
+              borderRadius: 3,
+              borderColor: '#ff6b35',
+              borderWidth: 1
+            }
+          } 
+        };
+      }), 
+      symbol: 'pin', 
+      symbolSize: 16, 
+      itemStyle: { 
+        color: '#ff6b35', 
+        borderColor: '#fff', 
+        borderWidth: 2,
+        shadowColor: '#ff6b35',
+        shadowBlur: 8
+      }, 
+      xAxisIndex: 0, 
+      yAxisIndex: 0, 
+      z: 5 
+    });
+  }
+  
+  if (otherSignals.length > 0) {
+    series.push({ 
+      type: 'scatter', 
+      name: '信号', 
+      data: otherSignals.map(s => ({ value: [s.date, s.price], label: { show: true, position: 'top', formatter: '信号', textStyle: { color: '#fff', fontSize: 10 } } })), 
+      symbol: 'circle', 
+      symbolSize: 10, 
+      itemStyle: { color: '#1890ff', borderColor: '#fff', borderWidth: 1 }, 
+      xAxisIndex: 0, 
+      yAxisIndex: 0, 
+      z: 4 
+    });
+  }
 
   let panelIdx = 1;
   function addPanelGrid(panelKey: 'vol'|'macd'|'kdj'|'bias') {
@@ -153,6 +309,9 @@ export function buildCandleOption(params: {
   const priceLegendData: string[] = [tsCode, ...maList.map(p => `MA${p}`)];
   if (buys.length > 0) priceLegendData.push('BUY');
   if (sells.length > 0) priceLegendData.push('SELL');
+  if (stopGainSignals.length > 0) priceLegendData.push('止盈');
+  if (stopLossSignals.length > 0) priceLegendData.push('止损');
+  if (otherSignals.length > 0) priceLegendData.push('信号');
   legends.push({ type: 'plain', top: (pricePanel.top || 0) - legendH + 2, left: leftPad, right: 24, data: priceLegendData, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: '#667085' } });
   for (const key of restPanels) {
     const p = panels.find(pp => pp.key === key);

@@ -1,8 +1,8 @@
 # Portfolio System UI
 
 一个基于 FastAPI + React(antd) 的投资组合可视化与管理界面。
-后端使用 SQLite 存储，支持：类别/标的映射、交易流水、每日快照、技术指标、信号（止盈/配置偏离）与操作日志；
-前端包含 Dashboard、复盘、持仓编辑、交易录入、设置等页面。
+后端使用 SQLite 存储，支持：类别/标的映射、交易流水、每日快照、技术指标、历史信号（止盈/止损）与操作日志；
+前端包含 Dashboard、复盘、持仓编辑、交易录入、信号分析、设置等页面，支持K线图信号标注。
 
 ---
 
@@ -99,9 +99,11 @@ npm run dev
 - Dashboard 概览：`GET /api/dashboard?date=YYYYMMDD`
 - 聚合 KPI：`GET /api/dashboard/aggregate?start=YYYYMMDD&end=YYYYMMDD&period=day|week|month`
 - K 线数据与详情：`GET /api/instrument/detail?ts_code=...`
+- 历史信号查询：`GET /api/signal/all?type=...&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
 - 交易流水：`GET /api/txn/list`、`GET /api/txn/range?start=...&end=...`
 - 导入种子：`POST /api/seed/load { categories_csv, instruments_csv }`
 - 同步价格（TuShare）：`POST /api/sync-prices { date?:YYYYMMDD, recalc?:bool }`
+- 重算快照与信号：`POST /api/calc { date:YYYYMMDD }`
 - 操作日志查询：`GET /api/logs/search`
 
 完整接口可在 http://127.0.0.1:8000/docs 查看。
@@ -130,11 +132,19 @@ python portfolio.py calc -d 20250101 # 重算指定交易日
 
 ## 前端功能
 
-- Dashboard：资产概览、类别分布、持仓表、资产曲线
-- 复盘分析：多标的对比、标准化/指数化曲线
-- 持仓编辑：期初持仓设置、手动调整、清理 0 持仓
-- 交易记录：流水查询与录入
-- 设置：系统配置（阈值、TuShare Token、现金镜像等）
+- **Dashboard**：资产概览、类别分布、持仓表、资产曲线，实时显示最新信号
+- **复盘分析**：多标的对比、标准化/指数化曲线，支持时间范围选择
+- **信号分析**：历史交易信号汇总，支持时间范围和信号类型筛选，默认显示近一个月
+- **持仓详情**：单标的K线图，集成信号标注（止盈/止损），交易记录查询
+- **持仓编辑**：期初持仓设置、手动调整、清理零持仓，IRR计算
+- **交易记录**：流水查询与录入，支持批量导入
+- **设置**：系统配置（阈值、TuShare Token、现金镜像等）
+
+### 信号系统特性
+- **历史信号记录**：信号与首次出现日期严格匹配，非每日快照
+- **智能去重**：避免重复计算生成相同信号
+- **K线图集成**：信号在K线图上智能定位，止盈显示在高点上方，止损显示在低点下方
+- **时间筛选**：默认显示近期有操作价值的信号，支持自定义时间范围
 
 ---
 

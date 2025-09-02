@@ -1,10 +1,33 @@
 import { Badge, Table, Tag, Typography, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import type { PositionRow } from "../api/types";
+import type { PositionRow, SignalRow } from "../api/types";
 import { fmtCny, fmtPct } from "../utils/format";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { fetchAllSignals } from "../api/hooks";
 
 export default function PositionTable({ data, loading }: { data: PositionRow[]; loading: boolean }) {
+  const [signals, setSignals] = useState<SignalRow[]>([]);
+
+  // 获取最新历史信号数据
+  useEffect(() => {
+    const loadSignals = async () => {
+      try {
+        const signalData = await fetchAllSignals(undefined, undefined, undefined, undefined, 200);
+        setSignals(signalData);
+      } catch (error) {
+        console.error("Failed to load signals:", error);
+      }
+    };
+    loadSignals();
+  }, []);
+
+  // 根据标的代码获取最新信号
+  const getSignalsForTsCode = (ts_code: string) => {
+    const tsSignals = signals.filter(s => s.ts_code === ts_code);
+    // 按日期倒序排列，取最新的信号
+    return tsSignals.sort((a, b) => b.trade_date.localeCompare(a.trade_date));
+  };
   const columns: ColumnsType<PositionRow> = [
     { title: "类别", dataIndex: "cat_name", render: (t, r) => <>{t}{r.cat_sub? <span style={{ color:"#98A2B3" }}> / {r.cat_sub}</span> : null}</> },
     { title: "代码/名称", dataIndex: "ts_code", render: (t, r) => (
@@ -26,8 +49,29 @@ export default function PositionTable({ data, loading }: { data: PositionRow[]; 
     { title: "成本", dataIndex: "cost", align: "right", render: fmtCny },
     { title: "未实现盈亏", dataIndex: "unrealized_pnl", align: "right", render: fmtCny },
     { title: "收益率", dataIndex: "ret", align: "right", render: fmtPct, width: 100 },
-    { title: "信号", dataIndex: "stop_gain_hit", align: "center", width: 90,
-      render: (v) => v ? <Tag color="green">止盈</Tag> : "-" },
+    { title: "信号", dataIndex: "ts_code", align: "center", width: 120,
+      render: (ts_code) => {
+        const tsSignals = getSignalsForTsCode(ts_code);
+        if (tsSignals.length === 0) return "-";
+        
+        // 显示最新的信号
+        const latestSignal = tsSignals[0];
+        const color = latestSignal.type === "STOP_GAIN" ? "red" : 
+                     latestSignal.type === "STOP_LOSS" ? "volcano" : 
+                     latestSignal.type === "UNDERWEIGHT" ? "blue" : "gray";
+        
+        const label = latestSignal.type === "STOP_GAIN" ? "止盈" :
+                     latestSignal.type === "STOP_LOSS" ? "止损" :
+                     latestSignal.type === "UNDERWEIGHT" ? "低配" : latestSignal.type;
+        
+        return (
+          <Tooltip title={`${latestSignal.trade_date}: ${latestSignal.message}`}>
+            <Tag color={color}>
+              {label}
+            </Tag>
+          </Tooltip>
+        );
+      }},
   ];
   return (
     <>

@@ -36,13 +36,28 @@ export type PositionRow = {
   stop_gain_hit: boolean;
 };
 
+export type SignalType = 
+  | "STOP_GAIN"      // 止盈信号
+  | "STOP_LOSS"      // 止损信号  
+  | "UNDERWEIGHT"    // 低配信号
+  | "BUY_SIGNAL"     // 买入信号
+  | "SELL_SIGNAL"    // 卖出信号
+  | "REBALANCE"      // 再平衡信号
+  | "RISK_ALERT"     // 风险预警
+  | "MOMENTUM"       // 动量信号
+  | "MEAN_REVERT";   // 均值回归信号
+
+export type SignalLevel = "HIGH" | "MEDIUM" | "LOW" | "INFO";
+
 export type SignalRow = {
+  id?: number;
   trade_date: string;
-  level: string;
-  type: "STOP_GAIN" | "OVERWEIGHT";
+  level: SignalLevel;
+  type: SignalType;
   category_id?: number | null;
   ts_code?: string | null;
   message: string;
+  created_at?: string;
 };
 
 export type TxnCreate = {
