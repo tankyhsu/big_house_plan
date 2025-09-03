@@ -3,7 +3,8 @@ import { Card, DatePicker, Space, Button, Tag, Switch } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import HistoricalLineChart, { type SeriesEntry, type TradeEvent } from "./HistoricalLineChart";
 import { usePositionSeries } from "./usePositionSeries";
-import { fetchLastPrice, fetchTxnRange } from "../../api/hooks";
+import { fetchLastPrice, fetchTxnRange, fetchAllSignals } from "../../api/hooks";
+import type { SignalRow } from "../../api/types";
 
 type Props = {
   tsCodes: string[];            // 一个或多个 ts_code
@@ -20,15 +21,25 @@ export default function PositionSeriesLine({ tsCodes, title, normalize = false }
   const [useIndexed, setUseIndexed] = useState<boolean>(normalize);
   const [eventsByCode, setEventsByCode] = useState<Record<string, TradeEvent[]>>({});
   const [lastPriceMap, setLastPriceMap] = useState<Record<string, number | null>>({});
+  const [signalsByCode, setSignalsByCode] = useState<Record<string, SignalRow[]>>({});
 
   const { loading: hookLoading, series: hookSeries } = usePositionSeries(tsCodes, range);
   useEffect(() => { setSeries(hookSeries); setLoading(hookLoading); }, [hookLoading, hookSeries]);
 
-  // 拉取交易点 & 末尾日价格
+  // 拉取交易点 & 末尾日价格 & 信号
   useEffect(() => {
-    if (!tsCodes || tsCodes.length === 0) { setEventsByCode({}); setLastPriceMap({}); return; }
+    if (!tsCodes || tsCodes.length === 0) { 
+      setEventsByCode({}); 
+      setLastPriceMap({}); 
+      setSignalsByCode({});
+      return; 
+    }
     const start = range[0].format("YYYYMMDD");
     const end = range[1].format("YYYYMMDD");
+    const startDate = range[0].format("YYYY-MM-DD");
+    const endDate = range[1].format("YYYY-MM-DD");
+    
+    // 拉取交易数据
     fetchTxnRange(start, end, tsCodes).then(res => {
       const map: Record<string, TradeEvent[]> = {};
       (res.items || []).forEach(it => {
@@ -42,6 +53,7 @@ export default function PositionSeriesLine({ tsCodes, title, normalize = false }
       setEventsByCode(map);
     }).catch(() => setEventsByCode({}));
 
+    // 拉取最后价格
     Promise.all(tsCodes.map(c => fetchLastPrice(c, end).then(r => [c, r.close] as const).catch(() => [c, null] as const)))
       .then(entries => {
         const prices: Record<string, number | null> = {};
@@ -49,6 +61,19 @@ export default function PositionSeriesLine({ tsCodes, title, normalize = false }
         setLastPriceMap(prices);
       })
       .catch(() => setLastPriceMap({}));
+
+    // 拉取信号数据
+    Promise.all(tsCodes.map(code => 
+      fetchAllSignals(undefined, code, startDate, endDate, 1000)
+        .then(signals => [code, signals] as const)
+        .catch(() => [code, []] as const)
+    )).then(entries => {
+      const signalsMap: Record<string, SignalRow[]> = {};
+      entries.forEach(([code, signals]) => {
+        signalsMap[code] = Array.isArray(signals) ? signals : [];
+      });
+      setSignalsByCode(signalsMap);
+    }).catch(() => setSignalsByCode({}));
   }, [JSON.stringify(tsCodes), range[0].valueOf(), range[1].valueOf()]);
 
   return (
@@ -79,7 +104,7 @@ export default function PositionSeriesLine({ tsCodes, title, normalize = false }
       {(!tsCodes || tsCodes.length === 0) ? (
         <Tag color="gold">请选择至少一个标的</Tag>
       ) : (
-        <HistoricalLineChart series={series} normalize={useIndexed} eventsByCode={eventsByCode} lastPriceMap={lastPriceMap} />
+        <HistoricalLineChart series={series} normalize={useIndexed} eventsByCode={eventsByCode} lastPriceMap={lastPriceMap} signalsByCode={signalsByCode} />
       )}
     </Card>
   );

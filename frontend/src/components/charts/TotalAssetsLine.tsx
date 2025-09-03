@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { Card, DatePicker, Space, Button } from "antd";
 import dayjs, { Dayjs } from "dayjs";
-import { fetchDashboardAgg } from "../../api/hooks";
+import { fetchDashboardAgg, fetchAllSignals } from "../../api/hooks";
 import { formatQuantity } from "../../utils/format";
+import { getSignalConfig } from "../../utils/signalUtils";
+import type { SignalRow } from "../../api/types";
 
 // 备用：按步长生成日期序列（当前未使用）
 
@@ -17,6 +19,7 @@ function formatMoney(n: number) {
 export default function TotalAssetsLine() {
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(180, "day"), dayjs()]);
   const [series, setSeries] = useState<{ date: string; value: number }[]>([]);
+  const [signals, setSignals] = useState<SignalRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -30,17 +33,34 @@ export default function TotalAssetsLine() {
     setLoading(true);
     const start = range[0].format("YYYYMMDD");
     const end = range[1].format("YYYYMMDD");
-    fetchDashboardAgg(start, end, period)
-      .then((res) => {
-        const rows = (res.items || []).map((it) => ({ date: it.date, value: Number(formatQuantity(it.market_value || 0)) }));
+    const startDate = range[0].format("YYYY-MM-DD");
+    const endDate = range[1].format("YYYY-MM-DD");
+    
+    Promise.all([
+      fetchDashboardAgg(start, end, period),
+      // 获取全局信号（影响全部标的或类别的信号）
+      fetchAllSignals(undefined, undefined, startDate, endDate, 1000)
+    ])
+      .then(([dashRes, signalsRes]) => {
+        const rows = (dashRes.items || []).map((it) => ({ date: it.date, value: Number(formatQuantity(it.market_value || 0)) }));
         setSeries(rows);
+        
+        // 过滤全局生效的信号
+        const globalSignals = signalsRes.filter(signal => 
+          !signal.ts_code || // 没有指定具体标的
+          signal.scope_type === "ALL_INSTRUMENTS" ||
+          signal.scope_type === "ALL_CATEGORIES"
+        );
+        setSignals(globalSignals);
       })
-      .catch(() => setSeries([]))
+      .catch(() => {
+        setSeries([]);
+        setSignals([]);
+      })
       .finally(() => setLoading(false));
   }, [range]);
 
   const option = useMemo(() => {
-    const x = series.map((s) => s.date);   // 'YYYY-MM-DD'
     const y = series.map((s) => s.value);
 
     // 自适应窄区间：加呼吸空间，避免Y轴贴边 & 被截断
@@ -71,40 +91,47 @@ export default function TotalAssetsLine() {
           }
         : undefined;
 
-    const markLine =
-      y.length > 0
-        ? {
-            data: [{ type: "average", name: "均值" }],
-            label: { formatter: (p: any) => `均值：${formatMoney(p.value)}`, fontSize: 10 },
-          }
-        : undefined;
+    // 信号标记线 - 与K线图保持一致的颜色配置
+    const signalMarkLines = signals.map(signal => {
+      const config = getSignalConfig(signal.type);
+      return {
+        xAxis: signal.trade_date,
+        name: `${config.emoji}${config.name}: ${signal.message}`,
+        label: {
+          position: 'end',
+          formatter: `${config.emoji}${config.name}`,
+          fontSize: 10,
+          color: config.color,
+          backgroundColor: 'rgba(255,255,255,0.95)',
+          padding: [2, 4],
+          borderRadius: 3,
+          borderColor: config.color,
+          borderWidth: 1
+        },
+        lineStyle: {
+          color: config.color,
+          type: 'dashed',
+          width: 2
+        }
+      };
+    });
 
-    // 根据区间长度自适应X轴刻度密度
-    const totalDays = series.length > 1
-      ? dayjs(series[series.length - 1].date).diff(dayjs(series[0].date), "day") + 1
-      : 0;
-
-    const xLabelInterval = (index: number, value: string) => {
-      const isFirst = index === 0;
-      const isLast = index === x.length - 1;
-      const d = dayjs(value, "YYYY-MM-DD");
-      if (isFirst || isLast) return true;
-      if (totalDays <= 100) {
-        // 近3个月：每周一标注
-        return d.day() === 1;
-      } else if (totalDays <= 200) {
-        // 近6个月：每月1日与15日
-        const day = d.date();
-        return day === 1 || day === 15;
-      } else if (totalDays <= 400) {
-        // 近1年：每月1日
-        return d.date() === 1;
-      } else {
-        // 更长：每季度首月1日（1/4/7/10）
-        const m = d.month() + 1;
-        return d.date() === 1 && (m === 1 || m === 4 || m === 7 || m === 10);
+    const avgMarkLine = y.length > 0 ? {
+      type: "average", 
+      name: "均值",
+      label: { 
+        formatter: (p: any) => `均值：${formatMoney(p.value)}`, 
+        fontSize: 10 
       }
-    };
+    } : null;
+
+    const markLine = (y.length > 0 || signalMarkLines.length > 0) ? {
+      data: [
+        ...(avgMarkLine ? [avgMarkLine] : []),
+        ...signalMarkLines
+      ]
+    } : undefined;
+    
 
     return {
       tooltip: {
@@ -113,13 +140,11 @@ export default function TotalAssetsLine() {
       },
       grid: { left: 24, right: 32, top: 28, bottom: 28, containLabel: true },
       xAxis: {
-        type: "category",
-        data: x,
+        type: "time",
         boundaryGap: false,
         axisTick: { alignWithLabel: true },
         axisLabel: {
-          interval: xLabelInterval as any,
-          formatter: (val: string) => dayjs(val).format("YYYY-MM"),
+          formatter: (val: number) => dayjs(val).format("YYYY-MM"),
           rotate: 0,
           hideOverlap: true,
           margin: 12,
@@ -140,13 +165,13 @@ export default function TotalAssetsLine() {
         {
           type: "line",
           smooth: true,
-          data: y,
+          data: series.map(s => [s.date, s.value]),
           showSymbol: false,
           sampling: "lttb", // 大量点时自动抽稀，保留趋势与极值
           markPoint,
           markLine,
           endLabel: {
-            show: y.length > 0,
+            show: series.length > 0,
             formatter: (p: any) => formatMoney(p.value),
             distance: 6,
             fontSize: 10,

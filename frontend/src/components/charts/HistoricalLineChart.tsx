@@ -2,6 +2,8 @@ import ReactECharts from "echarts-for-react";
 import dayjs from "dayjs";
 import { useMemo } from "react";
 import { formatQuantity, formatPrice } from "../../utils/format";
+import { getSignalConfig, getSignalPriority } from "../../utils/signalUtils";
+import type { SignalRow } from "../../api/types";
 
 export type SeriesPoint = { date: string; value: number | null };
 export type SeriesEntry = { name: string; points: SeriesPoint[] };
@@ -13,6 +15,7 @@ type Props = {
   height?: number;                     // 图高，默认 340
   eventsByCode?: Record<string, TradeEvent[]>; // 交易点，用散点覆盖在折线上
   lastPriceMap?: Record<string, number | null>; // 末尾日价格（用于收益计算）
+  signalsByCode?: Record<string, SignalRow[]>; // 信号数据，按标的分组
 };
 
 function formatMoney(n: number) {
@@ -21,7 +24,7 @@ function formatMoney(n: number) {
   return formatQuantity(n);
 }
 
-export default function HistoricalLineChart({ series, normalize = false, height = 340, eventsByCode, lastPriceMap }: Props) {
+export default function HistoricalLineChart({ series, normalize = false, height = 340, eventsByCode, lastPriceMap, signalsByCode }: Props) {
   const option = useMemo(() => {
     const codes = Object.keys(series || {});
     const x: string[] = Array.from(
@@ -39,7 +42,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
         if (v == null) return null;
         return normalize && base > 0 ? Number(formatQuantity((Number(v) / base) * 100)) : Number(v);
       });
-      return {
+      const lineSeriesConfig: any = {
         name: entry?.name || code,
         type: "line" as const,
         smooth: true,
@@ -56,6 +59,8 @@ export default function HistoricalLineChart({ series, normalize = false, height 
           fontSize: 10,
         },
       };
+
+      return lineSeriesConfig;
     });
 
     // 叠加交易点（BUY/SELL）
@@ -105,6 +110,70 @@ export default function HistoricalLineChart({ series, normalize = false, height 
       });
     }
 
+    // 叠加信号标记（竖直线）- 与K线图保持一致的颜色配置
+    const markLines: any[] = [];
+    if (signalsByCode && Object.keys(signalsByCode).length > 0) {
+      // 收集所有信号，按日期去重
+      const allSignalsByDate: Record<string, SignalRow[]> = {};
+      codes.forEach(code => {
+        const signals = signalsByCode[code] || [];
+        signals.forEach(signal => {
+          if (!allSignalsByDate[signal.trade_date]) {
+            allSignalsByDate[signal.trade_date] = [];
+          }
+          allSignalsByDate[signal.trade_date].push(signal);
+        });
+      });
+
+      // 为每个日期创建标记线
+      Object.entries(allSignalsByDate).forEach(([date, signals]) => {
+        // 按优先级排序
+        const sortedSignals = signals.sort((a, b) => getSignalPriority(b.type) - getSignalPriority(a.type));
+        
+        const primarySignal = sortedSignals[0];
+        const config = getSignalConfig(primarySignal.type);
+        
+        // 合并信号名称显示
+        const signalNames = signals.map(s => {
+          const cfg = getSignalConfig(s.type);
+          return `${cfg.emoji}${cfg.name}`;
+        }).join(' ');
+        
+        markLines.push({
+          xAxis: date,
+          name: signals.map(s => s.message).join('；'),
+          label: {
+            position: 'end',
+            formatter: signalNames,
+            fontSize: 9,
+            color: config.color,
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            padding: [2, 4],
+            borderRadius: 3,
+            borderColor: config.color,
+            borderWidth: 1
+          },
+          lineStyle: {
+            color: config.color,
+            type: 'dashed',
+            width: 2
+          }
+        });
+      });
+    }
+
+    // 将信号标记线添加到第一个线条系列
+    if (markLines.length > 0 && sers.length > 0) {
+      // 找到第一个线条系列（非散点图）
+      const firstLineSeriesIndex = sers.findIndex(s => s.type === "line");
+      if (firstLineSeriesIndex >= 0) {
+        sers[firstLineSeriesIndex].markLine = {
+          data: markLines,
+          silent: true
+        };
+      }
+    }
+
     return {
       tooltip: {
         trigger: "axis",
@@ -122,7 +191,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
       series: sers,
       dataZoom: [{ type: "inside" }, { type: "slider" }],
     };
-  }, [series, normalize, eventsByCode, lastPriceMap]);
+  }, [series, normalize, eventsByCode, lastPriceMap, signalsByCode]);
 
   return <ReactECharts notMerge lazyUpdate option={option as any} style={{ height }} />;
 }

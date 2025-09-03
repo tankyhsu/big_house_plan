@@ -1,46 +1,12 @@
 import { Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
 import type { SignalRow } from "../api/types";
+import { getSignalConfig } from "../utils/signalUtils";
 
 interface SignalTagsProps {
   signals: SignalRow[];
   maxDisplay?: number;
 }
-
-// 简化的信号配置
-const getSignalColor = (type: string): string => {
-  const colors: Record<string, string> = {
-    'STOP_GAIN': 'red',
-    'STOP_LOSS': 'volcano',
-    'UNDERWEIGHT': 'blue',
-    'BUY_SIGNAL': 'green',
-    'SELL_SIGNAL': 'red',
-    'REBALANCE': 'purple',
-    'RISK_ALERT': 'magenta',
-    'MOMENTUM': 'cyan',
-    'MEAN_REVERT': 'geekblue',
-    'BULLISH': 'lime',          // 利好信号
-    'BEARISH': 'orange',        // 利空信号
-  };
-  return colors[type] || 'gray';
-};
-
-const getSignalLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    'STOP_GAIN': '止盈',
-    'STOP_LOSS': '止损',
-    'UNDERWEIGHT': '低配',
-    'BUY_SIGNAL': '买入',
-    'SELL_SIGNAL': '卖出',
-    'REBALANCE': '再平衡',
-    'RISK_ALERT': '风险预警',
-    'MOMENTUM': '动量',
-    'MEAN_REVERT': '均值回归',
-    'BULLISH': '利好',          // 利好信号
-    'BEARISH': '利空',          // 利空信号
-  };
-  return labels[type] || type;
-};
 
 const getRelativeTimeText = (tradeDate: string): string => {
   const signalDay = dayjs(tradeDate);
@@ -71,17 +37,36 @@ export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps)
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
       {displaySignals.map((signal, idx) => {
-        const color = getSignalColor(signal.type);
-        const label = getSignalLabel(signal.type);
+        const config = getSignalConfig(signal.type);
         const relativeTime = getRelativeTimeText(signal.trade_date);
+        
+        // 构建详细的提示信息
+        const tooltipTitle = (
+          <div>
+            <div><strong>{relativeTime}</strong></div>
+            <div>{config.emoji} {config.name}</div>
+            <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+              {signal.message}
+            </div>
+          </div>
+        );
         
         return (
           <Tooltip 
             key={idx} 
-            title={`${relativeTime} • ${signal.message}`}
+            title={tooltipTitle}
+            overlayStyle={{ maxWidth: 300 }}
           >
-            <Tag color={color} style={{ margin: 0, fontSize: '11px' }}>
-              {label}
+            <Tag 
+              style={{ 
+                margin: 0, 
+                fontSize: '11px',
+                backgroundColor: config.color + '20',
+                borderColor: config.color,
+                color: config.color
+              }}
+            >
+              {config.emoji} {config.name}
             </Tag>
           </Tooltip>
         );
