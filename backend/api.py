@@ -279,19 +279,19 @@ class InstrumentCreate(BaseModel):
     name: str
     category_id: int
     active: bool = True
-    type: str | None = None  # NEW: STOCK / FUND / CASH
+    type: Optional[str] = None  # NEW: STOCK / FUND / CASH
 
 class InstrumentUpdate(BaseModel):
     ts_code: str
     active: bool
-    type: str | None = None  # NEW: STOCK / FUND / CASH
+    type: Optional[str] = None  # NEW: STOCK / FUND / CASH
 
 class InstrumentEdit(BaseModel):
     ts_code: str
     name: str
     category_id: int
     active: bool = True
-    type: str | None = None
+    type: Optional[str] = None
 
 @app.get("/api/category/list")
 def api_category_list():
@@ -433,7 +433,7 @@ def api_txn_list(page: int = 1, size: int = 20):
 def api_txn_range(
     start: str = Query(..., pattern=r"^\d{8}$"),
     end: str = Query(..., pattern=r"^\d{8}$"),
-    ts_codes: str | None = Query(None, description="逗号分隔，可选：限定标的"),
+    ts_codes: Optional[str] = Query(None, description="逗号分隔，可选：限定标的"),
 ):
     """
     区间内交易流水（可按标的过滤）。
@@ -554,8 +554,8 @@ class OpeningPos(BaseModel):
 
 class PositionUpdateBody(BaseModel):
     ts_code: str
-    shares: float | None = None
-    avg_cost: float | None = None
+    shares: Optional[float] = None
+    avg_cost: Optional[float] = None
     date: str  # YYYY-MM-DD
     opening_date: Optional[str] = None  # YYYY-MM-DD，可选
 
@@ -749,7 +749,7 @@ def api_position_irr_batch(date: str = Query(..., pattern=r"^\d{8}$")):
 # 九、价格（只读）
 # =============================================================================
 @app.get("/api/price/last")
-def api_price_last(ts_code: str = Query(...), date: str | None = Query(None, pattern=r"^\d{8}$")):
+def api_price_last(ts_code: str = Query(...), date: Optional[str] = Query(None, pattern=r"^\d{8}$")):
     """
     返回指定标的在给定日期(YYYYMMDD)之前(含)的最近收盘价与对应日期。
     若未传 date，则使用今天。
@@ -817,7 +817,7 @@ def api_price_ohlc(
 # 十、标的查找（TuShare 辅助）
 # =============================================================================
 @app.get("/api/instrument/lookup")
-def api_instrument_lookup(ts_code: str = Query(...), date: str | None = Query(None, pattern=r"^\d{8}$")):
+def api_instrument_lookup(ts_code: str = Query(...), date: Optional[str] = Query(None, pattern=r"^\d{8}$")):
     cfg = get_config()
     token = cfg.get("tushare_token")
     if not token:

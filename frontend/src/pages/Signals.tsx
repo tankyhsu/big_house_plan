@@ -9,9 +9,9 @@ import { fetchAllSignals } from "../api/hooks";
 import client from "../api/client";
 import type { SignalRow, SignalType, SignalLevel } from "../api/types";
 import { ReloadOutlined, AlertOutlined, PlusOutlined, HistoryOutlined } from "@ant-design/icons";
-import { Link } from "react-router-dom";
 import { SIGNAL_CONFIG, LEVEL_CONFIG } from "../utils/signalConfig";
 import CreateSignalModal from "../components/CreateSignalModal";
+import InstrumentDisplay from "../components/InstrumentDisplay";
 
 export default function SignalsPage() {
   const [signals, setSignals] = useState<SignalRow[]>([]);
@@ -117,28 +117,17 @@ export default function SignalsPage() {
       title: "标的",
       dataIndex: "ts_code",
       width: 200,
-      render: (ts_code, record) => {
-        if (ts_code) {
-          return (
-            <div>
-              <Link to={`/instrument/${ts_code}`} style={{ fontWeight: "bold", display: "block" }}>
-                {ts_code}
-              </Link>
-              <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
-                {record.name || "-"}
-              </Typography.Text>
-            </div>
-          );
-        }
-        if (record.category_id) {
-          return (
-            <Typography.Text style={{ color: "#666" }}>
-              类别 {record.category_id}
-            </Typography.Text>
-          );
-        }
-        return "-";
-      },
+      render: (ts_code, record) => (
+        <InstrumentDisplay
+          data={{
+            ts_code,
+            name: record.name,
+            category_id: record.category_id,
+          }}
+          mode="combined"
+          showLink={true}
+        />
+      ),
     },
     {
       title: "作用范围",

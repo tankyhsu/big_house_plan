@@ -2,9 +2,8 @@ import { Badge, Table, Typography, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { PositionRow } from "../api/types";
 import { fmtCny, fmtPct, formatQuantity, formatPrice } from "../utils/format";
-import { Link } from "react-router-dom";
-import SignalTags from "./SignalTags";
 import { getSignalsForTsCode } from "../hooks/useRecentSignals";
+import InstrumentDisplay from "./InstrumentDisplay";
 
 export default function PositionTable({ data, loading, signals }: { data: PositionRow[]; loading: boolean; signals: any[] }) {
   const columns: ColumnsType<PositionRow> = [
@@ -12,17 +11,16 @@ export default function PositionTable({ data, loading, signals }: { data: Positi
     { title: "代码/名称", dataIndex: "ts_code", render: (t, r) => {
       const tsSignals = getSignalsForTsCode(signals, t);
       return (
-        <div>
-          <Link to={`/instrument/${t}`} style={{ fontWeight: 'bold' }}>
-            {t}
-          </Link>
-          <div style={{ color:"#667085", display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span>{r.name}</span>
-            {tsSignals.length > 0 && (
-              <SignalTags signals={tsSignals} maxDisplay={3} />
-            )}
-          </div>
-        </div>
+        <InstrumentDisplay
+          data={{
+            ts_code: t,
+            name: r.name,
+          }}
+          mode="combined"
+          showLink={true}
+          signals={tsSignals}
+          maxSignals={3}
+        />
       );
     }},
     { title: "持仓份额", dataIndex: "shares", align: "right", width: 120, render: (v)=> formatQuantity(v) },

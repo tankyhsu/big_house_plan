@@ -6,6 +6,7 @@ import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite } from "../api/ty
 import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice } from "../api/hooks";
 import type { PositionRaw } from "../api/types";
 import { formatQuantity, formatPrice, fmtPct } from "../utils/format";
+import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
 
 const ACTIONS = ["BUY", "SELL", "DIV", "FEE", "ADJ"] as const;
 
@@ -192,8 +193,21 @@ export default function TxnPage() {
 
   const columns: ColumnsType<TxnItem> = [
     { title: "日期", dataIndex: "trade_date", width: 120 },
-    { title: "代码", dataIndex: "ts_code", width: 140 },
-    { title: "名称", dataIndex: "name", width: 160, render: (v) => v || "-" },
+    { 
+      title: "代码/名称", 
+      dataIndex: "ts_code", 
+      width: 200,
+      render: (ts_code, record) => (
+        <InstrumentDisplay
+          data={{
+            ts_code,
+            name: record.name,
+          }}
+          mode="combined"
+          showLink={true}
+        />
+      ),
+    },
     { title: "方向", dataIndex: "action", width: 90, render: (v) =>
         v === "BUY" ? <Tag color="green">BUY</Tag> :
         v === "SELL" ? <Tag color="red">SELL</Tag> : <Tag>{v}</Tag>
@@ -259,14 +273,7 @@ export default function TxnPage() {
   };
 
   // 构造下拉 options
-  const options = useMemo(
-    () =>
-      instOpts.map((i) => ({
-        value: i.ts_code,
-        label: `${i.ts_code}｜${i.name || ""}${i.cat_name ? `（${i.cat_name}${i.cat_sub ? `/${i.cat_sub}` : ""}）` : ""}`,
-      })),
-    [instOpts]
-  );
+  const options = useMemo(() => createInstrumentOptions(instOpts), [instOpts]);
 
   // 防抖搜索
   const onSearch = (kw: string) => {

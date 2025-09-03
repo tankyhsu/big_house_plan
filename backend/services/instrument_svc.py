@@ -5,9 +5,9 @@ from typing import Optional
 import pandas as pd
 from ..repository import instrument_repo
 
-def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: LogContext, sec_type: str | None = None):
+def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: LogContext, sec_type: Optional[str] = None):
     """创建/更新标的；sec_type 可为 STOCK | FUND | CASH 。None 时不覆盖既有值。"""
-    def _norm_type(t: str | None) -> str:
+    def _norm_type(t: Optional[str]) -> str:
         t = (t or "").upper().strip()
         if t in ("STOCK", "FUND", "CASH"): 
             return t
@@ -95,6 +95,6 @@ def get_instrument_detail(ts_code: str) -> dict | None:
         return dict(row) if row else None
 
 
-def edit_instrument(ts_code: str, name: str, category_id: int, active: bool, sec_type: str | None, log: LogContext):
+def edit_instrument(ts_code: str, name: str, category_id: int, active: bool, sec_type: Optional[str], log: LogContext):
     """编辑标的基础信息（等价于 upsert）。"""
     create_instrument(ts_code, name, category_id, active, log, sec_type=sec_type)

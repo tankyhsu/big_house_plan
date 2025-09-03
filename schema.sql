@@ -113,12 +113,18 @@ CREATE TABLE
 CREATE TABLE
   IF NOT EXISTS operation_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts REAL NOT NULL,
+    ts TEXT NOT NULL,
+    user TEXT NOT NULL,
     action TEXT NOT NULL,
-    params TEXT,
-    duration_ms REAL,
-    payload TEXT,
-    error TEXT
+    entity_type TEXT,
+    entity_id TEXT,
+    request_id TEXT,
+    before_json TEXT,
+    after_json TEXT,
+    payload_json TEXT,
+    result TEXT,
+    err_msg TEXT,
+    latency_ms INTEGER
   );
 
 -- 索引用于提高日志查询性能

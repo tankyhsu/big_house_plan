@@ -1,4 +1,4 @@
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Optional
 from sqlite3 import Connection
 
 
@@ -40,7 +40,7 @@ def upsert_instrument(conn: Connection, ts_code: str, name: str, sec_type: str, 
     )
 
 
-def list_instruments(conn: Connection, q: str | None, active_only: bool):
+def list_instruments(conn: Connection, q: Optional[str], active_only: bool):
     sql = """
     SELECT i.ts_code, i.name, i.active, i.category_id, i.type,
            c.name AS cat_name, c.sub_name AS cat_sub

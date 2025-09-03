@@ -1,5 +1,6 @@
 # backend/services/dashboard_svc.py
 import pandas as pd
+from typing import Optional
 from ..db import get_conn
 from ..repository import reporting_repo
 from ..domain.txn_engine import round_price, round_quantity, round_shares, round_amount
@@ -174,7 +175,7 @@ def list_position(date_yyyymmdd: str) -> list[dict]:
         })
     return out
 
-def list_signal(date_yyyymmdd: str, typ: str|None = None, ts_code: str|None = None) -> list[dict]:
+def list_signal(date_yyyymmdd: str, typ: Optional[str] = None, ts_code: Optional[str] = None) -> list[dict]:
     d = yyyyMMdd_to_dash(date_yyyymmdd)
     with get_conn() as conn:
         if ts_code:
@@ -225,7 +226,7 @@ def list_signal(date_yyyymmdd: str, typ: str|None = None, ts_code: str|None = No
         rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
-def list_signal_all(typ: str|None = None, ts_code: str|None = None, start_date: str|None = None, end_date: str|None = None, limit: int = 100) -> list[dict]:
+def list_signal_all(typ: Optional[str] = None, ts_code: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, limit: int = 100) -> list[dict]:
     """
     获取历史信号，按日期倒序，包含标的名称
     支持日期范围筛选
@@ -363,7 +364,7 @@ def aggregate_kpi(start_yyyymmdd: str, end_yyyymmdd: str, period: str = "day") -
     return out
 
 
-def create_manual_signal(trade_date: str, ts_code: str|None, category_id: int|None, level: str, type: str, message: str) -> int:
+def create_manual_signal(trade_date: str, ts_code: Optional[str], category_id: Optional[int], level: str, type: str, message: str) -> int:
     """
     手动创建信号，用于添加政策面或市场环境变化的信号（兼容性函数）
     
@@ -401,10 +402,10 @@ def create_manual_signal(trade_date: str, ts_code: str|None, category_id: int|No
 
 def create_manual_signal_extended(
     trade_date: str, 
-    ts_code: str|None,
-    category_id: int|None, 
+    ts_code: Optional[str],
+    category_id: Optional[int], 
     scope_type: str,
-    scope_data: list[str]|None,
+    scope_data: Optional[list[str]],
     level: str, 
     type: str, 
     message: str

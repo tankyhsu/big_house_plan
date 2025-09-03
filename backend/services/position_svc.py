@@ -24,7 +24,7 @@ def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str
     log.set_after(after)
     return after
 
-def update_position_one(ts_code: str, shares: float|None, avg_cost: float|None, date: str, log: LogContext, opening_date: str | None = None):
+def update_position_one(ts_code: str, shares: Optional[float], avg_cost: Optional[float], date: str, log: LogContext, opening_date: Optional[str] = None):
     with get_conn() as conn:
         before = conn.execute("SELECT ts_code, shares, avg_cost, opening_date FROM position WHERE ts_code=?", (ts_code,)).fetchone()
         if before: before = dict(before)

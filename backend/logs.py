@@ -72,7 +72,7 @@ class LogContext:
             )
             conn.commit()
 
-def search_logs(q: str|None, action: str|None, ts_from: str|None, ts_to: str|None, page:int, size:int):
+def search_logs(q: Optional[str], action: Optional[str], ts_from: Optional[str], ts_to: Optional[str], page:int, size:int):
     where = []
     params = {}
     if q:

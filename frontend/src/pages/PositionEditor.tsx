@@ -4,12 +4,11 @@ import type { ColumnsType } from "antd/es/table";
 import { Tooltip } from "antd";
 import { fetchIrrBatch, fetchAllSignals } from "../api/hooks";
 import dayjs from "dayjs";
-import { Link } from "react-router-dom";
 import type { PositionRaw, InstrumentLite, CategoryLite, SignalRow } from "../api/types";
 import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, cleanupZeroPositions, lookupInstrument } from "../api/hooks";
-import SignalTags from "../components/SignalTags";
 import { formatPrice, fmtPct } from "../utils/format";
 import { getSignalsForTsCode } from "../hooks/useRecentSignals";
+import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
 
 export default function PositionEditor() {
   const [data, setData] = useState<PositionRaw[]>([]);
@@ -85,14 +84,7 @@ export default function PositionEditor() {
 
   // ====== 新增持仓（含登记新标的）原有逻辑（略） ======
   // === 下拉选项：将 instrument 列表映射为 AutoComplete options ===
-  const options = useMemo(
-    () =>
-      instOpts.map((i) => ({
-        value: i.ts_code,
-        label: `${i.ts_code}｜${i.name || ""}${i.cat_name ? `（${i.cat_name}${i.cat_sub ? `/${i.cat_sub}` : ""}）` : ""}`,
-      })),
-    [instOpts]
-  );
+  const options = useMemo(() => createInstrumentOptions(instOpts), [instOpts]);
 
   // 搜索节流：输入时动态刷新列表（可直接输入新代码）
   const onSearch = (kw: string) => {
@@ -235,17 +227,16 @@ export default function PositionEditor() {
       render: (t, r) => {
         const tsSignals = getSignalsForTsCode(signals, t);
         return (
-          <div>
-            <Link to={`/instrument/${encodeURIComponent(t)}`}>
-              <strong>{t}</strong>
-              <div style={{ color: "#667085", display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span>{r.inst_name}</span>
-                {tsSignals.length > 0 && (
-                  <SignalTags signals={tsSignals} maxDisplay={3} />
-                )}
-              </div>
-            </Link>
-          </div>
+          <InstrumentDisplay
+            data={{
+              ts_code: t,
+              inst_name: r.inst_name,
+            }}
+            mode="combined"
+            showLink={true}
+            signals={tsSignals}
+            maxSignals={3}
+          />
         );
       },
     },
