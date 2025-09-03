@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Modal, Form, Input, Select, DatePicker, message, AutoComplete } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { createSignal, fetchInstruments, fetchCategories, type SignalCreatePayload } from "../api/hooks";
-import type { InstrumentLite, CategoryLite, SignalLevel, SignalType } from "../api/types";
+import type { InstrumentLite, CategoryLite, SignalLevel, SignalType, SignalScopeType } from "../api/types";
 import { SIGNAL_CONFIG, LEVEL_CONFIG } from "../utils/signalConfig";
 
 interface CreateSignalModalProps {
@@ -18,6 +18,8 @@ interface FormValues {
   message: string;
   ts_code?: string;
   category_id?: number;
+  scope_type: SignalScopeType;
+  scope_data?: string[];
 }
 
 export default function CreateSignalModal({ open, onClose, onSuccess }: CreateSignalModalProps) {
@@ -25,7 +27,7 @@ export default function CreateSignalModal({ open, onClose, onSuccess }: CreateSi
   const [loading, setLoading] = useState(false);
   const [instruments, setInstruments] = useState<InstrumentLite[]>([]);
   const [categories, setCategories] = useState<CategoryLite[]>([]);
-  const [targetType, setTargetType] = useState<'instrument' | 'category'>('instrument');
+  const [scopeType, setScopeType] = useState<SignalScopeType>('INSTRUMENT');
 
   // 加载标的和类别数据
   useEffect(() => {
@@ -47,17 +49,24 @@ export default function CreateSignalModal({ open, onClose, onSuccess }: CreateSi
         level: values.level,
         type: values.type,
         message: values.message,
+        scope_type: values.scope_type,
+        // ALL_INSTRUMENTS和ALL_CATEGORIES类型不需要scope_data，动态获取
+        scope_data: values.scope_type === 'ALL_INSTRUMENTS' || values.scope_type === 'ALL_CATEGORIES' 
+          ? undefined 
+          : values.scope_data,
       };
 
-      if (targetType === 'instrument') {
-        payload.ts_code = values.ts_code;
-      } else {
-        payload.category_id = values.category_id;
+      // 兼容性处理：为了保持旧API兼容性
+      if (values.scope_type === 'INSTRUMENT' && values.scope_data?.length === 1) {
+        payload.ts_code = values.scope_data[0];
+      } else if (values.scope_type === 'CATEGORY' && values.scope_data?.length === 1) {
+        payload.category_id = parseInt(values.scope_data[0]);
       }
 
       await createSignal(payload);
       message.success("信号创建成功！");
       form.resetFields();
+      setScopeType('INSTRUMENT');
       onSuccess();
       onClose();
     } catch (error: unknown) {
@@ -76,6 +85,7 @@ export default function CreateSignalModal({ open, onClose, onSuccess }: CreateSi
 
   const handleCancel = () => {
     form.resetFields();
+    setScopeType('INSTRUMENT');
     onClose();
   };
 
@@ -107,6 +117,7 @@ export default function CreateSignalModal({ open, onClose, onSuccess }: CreateSi
           trade_date: dayjs(),
           level: 'INFO',
           type: 'BULLISH',
+          scope_type: 'INSTRUMENT',
         }}
       >
         <Form.Item
@@ -118,49 +129,84 @@ export default function CreateSignalModal({ open, onClose, onSuccess }: CreateSi
         </Form.Item>
 
         <Form.Item
-          label="信号目标"
-          name="target_type"
-          initialValue="instrument"
+          label="信号范围"
+          name="scope_type"
+          rules={[{ required: true, message: "请选择信号范围" }]}
         >
           <Select
-            value={targetType}
-            onChange={setTargetType}
+            value={scopeType}
+            onChange={setScopeType}
             options={[
-              { value: 'instrument', label: '特定标的' },
-              { value: 'category', label: '整个类别' },
+              { value: 'INSTRUMENT', label: '单个标的' },
+              { value: 'MULTI_INSTRUMENT', label: '多个标的' },
+              { value: 'ALL_INSTRUMENTS', label: '所有标的' },
+              { value: 'CATEGORY', label: '单个类别' },
+              { value: 'MULTI_CATEGORY', label: '多个类别' },
+              { value: 'ALL_CATEGORIES', label: '所有类别' },
             ]}
           />
         </Form.Item>
 
-        {targetType === 'instrument' ? (
+        {(scopeType === 'INSTRUMENT' || scopeType === 'MULTI_INSTRUMENT') && (
           <Form.Item
-            label="选择标的"
-            name="ts_code"
+            label={scopeType === 'INSTRUMENT' ? "选择标的" : "选择多个标的"}
+            name="scope_data"
             rules={[{ required: true, message: "请选择标的" }]}
           >
-            <AutoComplete
+            <Select
+              mode={scopeType === 'MULTI_INSTRUMENT' ? 'multiple' : undefined}
               options={instrumentOptions}
-              placeholder="输入标的代码或名称"
+              placeholder={scopeType === 'INSTRUMENT' ? "选择一个标的" : "选择多个标的"}
               showSearch
               filterOption={(input, option) =>
                 option?.label?.toLowerCase().includes(input.toLowerCase()) ?? false
               }
             />
           </Form.Item>
-        ) : (
+        )}
+
+        {(scopeType === 'CATEGORY' || scopeType === 'MULTI_CATEGORY') && (
           <Form.Item
-            label="选择类别"
-            name="category_id"
+            label={scopeType === 'CATEGORY' ? "选择类别" : "选择多个类别"}
+            name="scope_data"
             rules={[{ required: true, message: "请选择类别" }]}
           >
             <Select
-              options={categoryOptions}
-              placeholder="选择类别"
+              mode={scopeType === 'MULTI_CATEGORY' ? 'multiple' : undefined}
+              options={categoryOptions.map(cat => ({
+                value: cat.value.toString(),
+                label: cat.label,
+              }))}
+              placeholder={scopeType === 'CATEGORY' ? "选择一个类别" : "选择多个类别"}
               showSearch
               filterOption={(input, option) =>
                 option?.label?.toLowerCase().includes(input.toLowerCase()) ?? false
               }
             />
+          </Form.Item>
+        )}
+
+        {scopeType === 'ALL_INSTRUMENTS' && (
+          <Form.Item>
+            <div style={{ padding: '12px', backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px' }}>
+              <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>此信号将应用于所有激活的标的</div>
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                包括当前所有激活标的以及后续新增的激活标的。<br/>
+                信号作为客观市场事实，会动态覆盖所有符合条件的标的。
+              </div>
+            </div>
+          </Form.Item>
+        )}
+
+        {scopeType === 'ALL_CATEGORIES' && (
+          <Form.Item>
+            <div style={{ padding: '12px', backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: '6px' }}>
+              <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>此信号将应用于所有类别</div>
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                包括当前所有类别以及后续新增的类别。<br/>
+                信号作为客观市场事实，会动态覆盖所有符合条件的类别。
+              </div>
+            </div>
           </Form.Item>
         )}
 

@@ -103,6 +103,8 @@ CREATE TABLE
     trade_date TEXT NOT NULL,
     ts_code TEXT,
     category_id INTEGER,
+    scope_type TEXT DEFAULT 'INSTRUMENT',
+    scope_data TEXT,
     level TEXT,
     type TEXT,
     message TEXT

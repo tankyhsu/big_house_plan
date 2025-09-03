@@ -187,8 +187,10 @@ def api_signal_all(
 
 class SignalCreate(BaseModel):
     trade_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="信号日期 YYYY-MM-DD")
-    ts_code: Optional[str] = Field(None, description="标的代码，与category_id二选一")
-    category_id: Optional[int] = Field(None, description="类别ID，与ts_code二选一")
+    ts_code: Optional[str] = Field(None, description="标的代码（兼容性）")
+    category_id: Optional[int] = Field(None, description="类别ID（兼容性）")
+    scope_type: str = Field("INSTRUMENT", pattern="^(INSTRUMENT|CATEGORY|MULTI_INSTRUMENT|MULTI_CATEGORY|ALL_INSTRUMENTS|ALL_CATEGORIES)$", description="信号范围类型")
+    scope_data: Optional[List[str]] = Field(None, description="范围数据数组")
     level: str = Field(..., pattern="^(HIGH|MEDIUM|LOW|INFO)$", description="信号级别")
     type: str = Field(..., description="信号类型")
     message: str = Field(..., max_length=500, description="信号描述信息")
@@ -207,19 +209,15 @@ def api_rebuild_historical_signals():
 def api_signal_create(signal: SignalCreate):
     """
     手动创建信号：支持添加自定义信号（如利空/利好等政策面信号）。
-    ts_code 和 category_id 至少提供一个。
+    支持多种范围类型：单个标的/类别、多个标的/类别、所有标的/类别。
     """
-    if not signal.ts_code and not signal.category_id:
-        raise HTTPException(status_code=400, detail="ts_code 和 category_id 至少提供一个")
-    
-    if signal.ts_code and signal.category_id:
-        raise HTTPException(status_code=400, detail="ts_code 和 category_id 不能同时提供")
-    
-    from .services.dashboard_svc import create_manual_signal
-    result = create_manual_signal(
+    from .services.dashboard_svc import create_manual_signal_extended
+    result = create_manual_signal_extended(
         trade_date=signal.trade_date,
-        ts_code=signal.ts_code,
-        category_id=signal.category_id,
+        ts_code=signal.ts_code,  # 兼容性
+        category_id=signal.category_id,  # 兼容性  
+        scope_type=signal.scope_type,
+        scope_data=signal.scope_data,
         level=signal.level,
         type=signal.type,
         message=signal.message

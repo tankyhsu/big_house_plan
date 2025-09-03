@@ -51,6 +51,14 @@ export type SignalType =
 
 export type SignalLevel = "HIGH" | "MEDIUM" | "LOW" | "INFO";
 
+export type SignalScopeType = 
+  | "INSTRUMENT"      // 单个标的
+  | "CATEGORY"        // 单个类别 
+  | "MULTI_INSTRUMENT"  // 多个标的
+  | "MULTI_CATEGORY"   // 多个类别
+  | "ALL_INSTRUMENTS"  // 所有标的
+  | "ALL_CATEGORIES";  // 所有类别
+
 export type SignalRow = {
   id?: number;
   trade_date: string;
@@ -58,6 +66,9 @@ export type SignalRow = {
   type: SignalType;
   category_id?: number | null;
   ts_code?: string | null;
+  name?: string | null; // Instrument name from JOIN
+  scope_type?: SignalScopeType;
+  scope_data?: string; // JSON array of IDs
   message: string;
   created_at?: string;
 };

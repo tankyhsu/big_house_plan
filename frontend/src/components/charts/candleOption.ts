@@ -88,14 +88,15 @@ export function buildCandleOption(params: {
   }> = {
     'STOP_GAIN': { symbol: 'pin', color: '#f04438', emoji: '🔥', name: '止盈', position: 'top', offsetMultiplier: 1.02 },
     'STOP_LOSS': { symbol: 'pin', color: '#ff6b35', emoji: '⚠️', name: '止损', position: 'bottom', offsetMultiplier: 0.98 },
+    'UNDERWEIGHT': { symbol: 'circle', color: '#3b82f6', emoji: '📊', name: '低配', position: 'top', offsetMultiplier: 1.01 },
     'BUY_SIGNAL': { symbol: 'triangle', color: '#10b981', emoji: '📈', name: '买入', position: 'top', offsetMultiplier: 1.015 },
     'SELL_SIGNAL': { symbol: 'triangle', color: '#ef4444', emoji: '📉', name: '卖出', position: 'top', offsetMultiplier: 1.015 },
     'REBALANCE': { symbol: 'diamond', color: '#8b5cf6', emoji: '⚖️', name: '再平衡', position: 'top', offsetMultiplier: 1.025 },
-    'ALERT': { symbol: 'circle', color: '#f59e0b', emoji: '⚡', name: '提醒', position: 'top', offsetMultiplier: 1.01 },
-    'DIVIDEND': { symbol: 'rect', color: '#06b6d4', emoji: '💰', name: '分红', position: 'top', offsetMultiplier: 1.005 },
-    'SPLIT': { symbol: 'rect', color: '#84cc16', emoji: '🔄', name: '拆股', position: 'top', offsetMultiplier: 1.005 },
-    'NEWS': { symbol: 'circle', color: '#64748b', emoji: '📰', name: '消息', position: 'top', offsetMultiplier: 1.008 },
-    'EARNINGS': { symbol: 'rect', color: '#7c3aed', emoji: '📊', name: '财报', position: 'top', offsetMultiplier: 1.012 }
+    'RISK_ALERT': { symbol: 'circle', color: '#ec4899', emoji: '⚡', name: '风险预警', position: 'top', offsetMultiplier: 1.01 },
+    'MOMENTUM': { symbol: 'circle', color: '#06b6d4', emoji: '🚀', name: '动量', position: 'top', offsetMultiplier: 1.008 },
+    'MEAN_REVERT': { symbol: 'circle', color: '#1e40af', emoji: '🔄', name: '均值回归', position: 'top', offsetMultiplier: 1.008 },
+    'BULLISH': { symbol: 'circle', color: '#52c41a', emoji: '📈', name: '利好', position: 'top', offsetMultiplier: 1.01 },
+    'BEARISH': { symbol: 'circle', color: '#fa8c16', emoji: '📉', name: '利空', position: 'top', offsetMultiplier: 1.01 }
   };
 
   // 布局参数

@@ -2,6 +2,9 @@ import { useEffect, useState, useMemo } from "react";
 import { Select, Space, Table, Tag, Typography, Card, Row, Col, Statistic, Button, DatePicker, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { Dayjs } from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+
+dayjs.extend(relativeTime);
 import { fetchAllSignals } from "../api/hooks";
 import client from "../api/client";
 import type { SignalRow, SignalType, SignalLevel } from "../api/types";
@@ -70,6 +73,8 @@ export default function SignalsPage() {
       RISK_ALERT: 0,
       MOMENTUM: 0,
       MEAN_REVERT: 0,
+      BULLISH: 0,
+      BEARISH: 0,
     };
 
     const levelStats: Record<SignalLevel, number> = {
@@ -109,32 +114,63 @@ export default function SignalsPage() {
       ),
     },
     {
-      title: "标的代码",
+      title: "标的",
       dataIndex: "ts_code",
-      width: 120,
-      render: (ts_code) => {
+      width: 200,
+      render: (ts_code, record) => {
         if (ts_code) {
           return (
-            <Link to={`/instrument/${ts_code}`} style={{ fontWeight: "bold" }}>
-              {ts_code}
-            </Link>
+            <div>
+              <Link to={`/instrument/${ts_code}`} style={{ fontWeight: "bold", display: "block" }}>
+                {ts_code}
+              </Link>
+              <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
+                {record.name || "-"}
+              </Typography.Text>
+            </div>
+          );
+        }
+        if (record.category_id) {
+          return (
+            <Typography.Text style={{ color: "#666" }}>
+              类别 {record.category_id}
+            </Typography.Text>
           );
         }
         return "-";
       },
     },
     {
-      title: "标的名称",
-      dataIndex: "name",
-      width: 180,
-      render: (name, record) => {
-        if (record.ts_code) {
-          return name || "-";
-        }
-        if (record.category_id) {
-          return <span style={{ color: "#666" }}>类别 {record.category_id}</span>;
-        }
-        return "-";
+      title: "作用范围",
+      dataIndex: "scope_type",
+      width: 150,
+      render: (scope_type, record) => {
+        const getScopeDisplay = () => {
+          switch (scope_type) {
+            case "INSTRUMENT":
+              return { text: "单个标的", color: "blue" };
+            case "MULTI_INSTRUMENT":
+              return { text: "多个标的", color: "cyan" };
+            case "ALL_INSTRUMENTS":
+              return { text: "所有标的", color: "purple" };
+            case "CATEGORY":
+              return { text: "单个类别", color: "green" };
+            case "MULTI_CATEGORY":
+              return { text: "多个类别", color: "lime" };
+            case "ALL_CATEGORIES":
+              return { text: "所有类别", color: "orange" };
+            default:
+              return { text: scope_type || "-", color: "default" };
+          }
+        };
+
+        const { text, color } = getScopeDisplay();
+        
+        return (
+          <Tag color={color}>
+            {text}
+          </Tag>
+        );
       },
     },
     {
@@ -145,8 +181,17 @@ export default function SignalsPage() {
     {
       title: "日期",
       dataIndex: "trade_date",
-      width: 120,
-      render: (date) => dayjs(date).format("YYYY-MM-DD"),
+      width: 130,
+      render: (date) => (
+        <div>
+          <Typography.Text style={{ fontSize: "13px", display: "block" }}>
+            {dayjs(date).format("YYYY-MM-DD")}
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: "11px" }}>
+            {dayjs(date).fromNow()}
+          </Typography.Text>
+        </div>
+      ),
     },
   ];
 

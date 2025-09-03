@@ -25,7 +25,8 @@ export default function InstrumentDetail() {
   });
   const [posInfo, setPosInfo] = useState<{ shares: number; avg_cost: number; opening_date?: string | null } | null>(null);
   const [lastPrice, setLastPrice] = useState<{ date: string | null; close: number | null; prevClose: number | null }>({ date: null, close: null, prevClose: null });
-  const [signals, setSignals] = useState<SignalRow[]>([]);
+  const [headerSignals, setHeaderSignals] = useState<SignalRow[]>([]); // Header显示用的信号（一个月）
+  const [chartSignals, setChartSignals] = useState<SignalRow[]>([]); // K线图显示用的信号（6个月）
   const [signalsLoading, setSignalsLoading] = useState(false);
 
   const load = async () => {
@@ -83,19 +84,28 @@ export default function InstrumentDetail() {
       }
     }).catch(() => setPosInfo(null));
 
-    // 获取该标的的历史信号（一个月以内）
+    // 获取信号数据：分别拉取Header用和K线图用的信号
     const loadSignals = async () => {
       if (!ts_code) return;
       setSignalsLoading(true);
       try {
-        const oneMonthAgo = dayjs().subtract(1, "month").format("YYYY-MM-DD");
         const today = dayjs().format("YYYY-MM-DD");
-        const signalData = await fetchAllSignals(undefined, ts_code, oneMonthAgo, today, 10);
-        console.log('🔍 Loaded signals for', ts_code, ':', signalData?.length || 0, 'signals');
-        setSignals(signalData || []);
+        const oneMonthAgo = dayjs().subtract(1, "month").format("YYYY-MM-DD");
+        const sixMonthsAgo = dayjs().subtract(6, "months").format("YYYY-MM-DD");
+        
+        // 并行获取两个时间周期的信号数据
+        const [headerSignalData, chartSignalData] = await Promise.all([
+          fetchAllSignals(undefined, ts_code, oneMonthAgo, today, 10), // Header显示用（一个月，限制10条）
+          fetchAllSignals(undefined, ts_code, sixMonthsAgo, today, 100) // K线图用（六个月，限制100条）
+        ]);
+        
+        console.log('🔍 Loaded signals for', ts_code, '- Header:', headerSignalData?.length || 0, 'Chart:', chartSignalData?.length || 0);
+        setHeaderSignals(headerSignalData || []);
+        setChartSignals(chartSignalData || []);
       } catch (error) {
         console.error("Failed to load signals for ts_code:", error);
-        setSignals([]);
+        setHeaderSignals([]);
+        setChartSignals([]);
       } finally {
         setSignalsLoading(false);
       }
@@ -182,9 +192,9 @@ export default function InstrumentDetail() {
               <span style={{ color: '#667085' }}>
                 {inst.cat_name || '-'}{inst.cat_sub ? ` / ${inst.cat_sub}` : ''}
               </span>
-              {signals.length > 0 && (
+              {headerSignals.length > 0 && (
                 <div style={{ marginLeft: 8 }}>
-                  <SignalTags signals={signals} maxDisplay={5} />
+                  <SignalTags signals={headerSignals} maxDisplay={5} />
                 </div>
               )}
             </div>
@@ -279,7 +289,7 @@ export default function InstrumentDetail() {
                     height={320} 
                     title="K 线（可调周期）" 
                     secType={inst?.type}
-                    signals={signals.map(signal => ({
+                    signals={chartSignals.map(signal => ({
                       date: signal.trade_date, // 使用信号实际发生的日期
                       price: null, // 让CandleChart从K线数据中查找对应日期的价格
                       type: signal.type,

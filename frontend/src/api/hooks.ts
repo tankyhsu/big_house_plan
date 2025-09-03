@@ -50,8 +50,10 @@ export async function fetchAllSignals(type?: string, ts_code?: string, startDate
 
 export interface SignalCreatePayload {
   trade_date: string;           // YYYY-MM-DD format
-  ts_code?: string;            // 标的代码（与category_id二选一）
-  category_id?: number;        // 类别ID（与ts_code二选一）
+  ts_code?: string;            // 标的代码（兼容性）
+  category_id?: number;        // 类别ID（兼容性）
+  scope_type: "INSTRUMENT" | "CATEGORY" | "MULTI_INSTRUMENT" | "MULTI_CATEGORY" | "ALL_INSTRUMENTS" | "ALL_CATEGORIES";
+  scope_data?: string[];       // 多选时的ID数组
   level: "HIGH" | "MEDIUM" | "LOW" | "INFO";
   type: string;                // 信号类型
   message: string;             // 信号描述
