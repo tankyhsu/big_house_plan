@@ -136,7 +136,69 @@ export default function TotalAssetsLine() {
     return {
       tooltip: {
         trigger: "axis",
-        valueFormatter: (v: any) => `${formatMoney(Number(v))}`,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        borderColor: 'transparent',
+        textStyle: {
+          color: '#fff',
+          fontSize: 12
+        },
+        extraCssText: 'border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);',
+        formatter: (params: any[]) => {
+          const param = Array.isArray(params) ? params[0] : params;
+          const date = param.axisValue;
+          const value = param.value?.[1] || param.value;
+          
+          let html = `<div style="padding: 8px;">`;
+          
+          // Date header
+          html += `<div style="font-weight: bold; font-size: 13px; margin-bottom: 8px; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 6px;">${date}</div>`;
+          
+          // Total assets value
+          html += `<div style="margin-bottom: 8px; font-size: 12px;">`;
+          html += `<span style="color: #ccc;">总资产:</span> <span style="color: #42a5f5; font-weight: bold; font-size: 14px;">${formatMoney(Number(value))}</span>`;
+          html += `</div>`;
+          
+          // Find signals for this date
+          const signalsOnDate = signals.filter(signal => signal.trade_date === date);
+          
+          // Signals section
+          if (signalsOnDate.length > 0) {
+            html += `<div style="border-top: 1px solid rgba(255,255,255,0.2); margin-top: 8px; padding-top: 8px;">`;
+            html += `<div style="font-weight: bold; font-size: 12px; margin-bottom: 6px; color: #fff;">📡 全局信号</div>`;
+            
+            signalsOnDate.forEach(signal => {
+              const config = getSignalConfig(signal.type);
+              
+              // Signal level badge
+              let levelBadge = '';
+              if (signal.level) {
+                let levelColor = '#666';
+                let levelText = '';
+                switch(signal.level) {
+                  case 'HIGH': levelColor = '#ff4757'; levelText = '高'; break;
+                  case 'MEDIUM': levelColor = '#ff9500'; levelText = '中'; break;
+                  case 'LOW': levelColor = '#5352ed'; levelText = '低'; break;
+                  case 'INFO': levelColor = '#747d8c'; levelText = '信息'; break;
+                }
+                levelBadge = `<span style="background: ${levelColor}; color: white; font-size: 10px; padding: 1px 4px; border-radius: 2px; margin-left: 4px;">${levelText}</span>`;
+              }
+              
+              html += `<div style="margin-bottom: 6px; padding: 4px 0;">`;
+              html += `<div style="display: flex; align-items: center; margin-bottom: 2px;">`;
+              html += `<span style="font-size: 14px; margin-right: 4px;">${config.emoji}</span>`;
+              html += `<span style="color: ${config.color}; font-weight: bold; font-size: 12px;">${config.name}</span>`;
+              html += levelBadge;
+              html += `</div>`;
+              html += `<div style="color: #ccc; font-size: 11px; line-height: 1.4; margin-left: 20px;">${signal.message}</div>`;
+              html += `</div>`;
+            });
+            
+            html += `</div>`;
+          }
+          
+          html += `</div>`;
+          return html;
+        }
       },
       grid: { left: 24, right: 32, top: 28, bottom: 28, containLabel: true },
       xAxis: {

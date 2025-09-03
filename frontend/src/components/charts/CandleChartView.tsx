@@ -2,7 +2,7 @@ import ReactECharts from "echarts-for-react";
 import { Modal } from "antd";
 
 type Props = {
-  option: any;
+  option: unknown;
   height: number;
   title: string;
   fullscreen: boolean;
@@ -14,7 +14,12 @@ export default function CandleChartView({ option, height, title, fullscreen, onO
   return (
     <>
       <div onClick={onOpen}>
-        <ReactECharts notMerge lazyUpdate option={option} style={{ height, cursor: 'zoom-in' as any }} />
+        <ReactECharts 
+          notMerge 
+          lazyUpdate 
+          option={option} 
+          style={{ height, cursor: 'zoom-in' as any }}
+        />
       </div>
       <Modal
         title={`${title} - 全屏`}
@@ -25,7 +30,12 @@ export default function CandleChartView({ option, height, title, fullscreen, onO
         style={{ top: 8 }}
         styles={{ body: { padding: 8 } }}
       >
-        <ReactECharts notMerge lazyUpdate option={option} style={{ height }} />
+        <ReactECharts 
+          notMerge 
+          lazyUpdate 
+          option={option} 
+          style={{ height }}
+        />
       </Modal>
     </>
   );

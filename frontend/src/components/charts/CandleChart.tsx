@@ -5,6 +5,7 @@ import { buildCandleOption } from "./candleOption";
 // Indicator computations and option building are handled in separate modules.
 import CandleToolbar from "./CandleToolbar";
 import { useCandleData } from "./hooks/useCandleData";
+import type { SignalDetail } from "../../api/types";
 
 type Props = {
   tsCode: string;
@@ -13,7 +14,7 @@ type Props = {
   title?: string;
   secType?: string; // STOCK | ETF | FUND | CASH
   stretch?: boolean; // 自适应拉伸高度：按面板自动增长
-  signals?: Array<{ date: string; price: number | null; type: string; message: string }>; // 信号数据
+  signals?: SignalDetail[]; // 信号数据
 };
 
 export default function CandleChart({ tsCode, months = 6, height = 300, title = "K线（近6个月）", secType, stretch = true, signals = [] }: Props) {
@@ -22,6 +23,7 @@ export default function CandleChart({ tsCode, months = 6, height = 300, title = 
   const [maList, setMaList] = useState<number[]>([20, 30, 60]);
   const [fullscreen, setFullscreen] = useState(false);
   const [viewportH, setViewportH] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 900);
+
 
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight);

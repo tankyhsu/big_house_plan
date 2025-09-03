@@ -137,3 +137,16 @@ export type InstrumentDetail = {
   cat_name?: string | null;
   cat_sub?: string | null;
 };
+
+export type SignalDetail = {
+  id?: number;
+  date: string;
+  type: SignalType;
+  level?: SignalLevel;
+  message: string;
+  price?: number | null;
+  ts_code?: string;
+  category_id?: number | null;
+  scope_type?: string;
+  created_at?: string;
+};

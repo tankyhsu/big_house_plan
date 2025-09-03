@@ -1,5 +1,5 @@
 import { computeBias, computeKdj, computeMacd, mapVolumes, sma as SMA } from "./indicators";
-import { formatQuantity } from "../../utils/format";
+import { formatQuantity, formatPrice } from "../../utils/format";
 
 type Item = { date: string; open: number; high?: number | null; low?: number | null; close: number; vol?: number | null };
 type Trade = { date: string; price: number };
@@ -17,9 +17,24 @@ export function buildCandleOption(params: {
   fullscreen: boolean;
 }) {
   const { items, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen } = params;
+  
 
   const dates = items.map(it => it.date);
-  const kValues = items.map(it => [it.open, it.close, (it.low ?? it.close), (it.high ?? it.close)]);
+  // ECharts candlestick format: [open, close, low, high]
+  // Ensure low and high values are correct by taking min/max
+  const kValues = items.map(it => {
+    const open = it.open;
+    const close = it.close;
+    const rawLow = it.low ?? it.close;
+    const rawHigh = it.high ?? it.close;
+    
+    // Ensure low is actually the lower value and high is the higher value
+    const actualLow = Math.min(rawLow, rawHigh);
+    const actualHigh = Math.max(rawLow, rawHigh);
+    
+    
+    return [open, close, actualLow, actualHigh];
+  });
   const upColor = "#f04438";   // 红涨
   const downColor = "#12b76a"; // 绿跌
   const volumes = mapVolumes(items as any, upColor, downColor);
@@ -293,6 +308,7 @@ export function buildCandleOption(params: {
         
         return {
           value: [signal.date, signalPrice],
+          signalData: signal, // Store the full signal data for click handling
           tooltip: {
             formatter: `${config.emoji}${config.name}: ${signal.message || signal.type}`
           },
@@ -399,23 +415,171 @@ export function buildCandleOption(params: {
   const option = {
     tooltip: {
       trigger: "axis",
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderColor: 'transparent',
+      textStyle: {
+        color: '#fff',
+        fontSize: 12
+      },
+      extraCssText: 'border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);',
       formatter: (params: any[]) => {
+        
         const pK = params.find(p => p.seriesType === 'candlestick');
         const pV = params.find(p => p.seriesType === 'bar');
         const pLines = params.filter(p => p.seriesType === 'line');
+        const pSignals = params.filter(p => p.seriesType === 'scatter' && p.data?.signalData);
+        
         const date = (pK?.axisValue || pV?.axisValue || '').toString();
         const arr = (pK?.data || []) as number[];
-        const o = arr[0], c = arr[1], l = arr[2], h = arr[3];
-        const vol = (pV?.seriesName === 'Volume') ? ((pV?.data?.value ?? pV?.data ?? null) as number | null) : null;
-        const lines = [date];
-        if (arr.length) lines.push(`开: ${o}  高: ${h}  低: ${l}  收: ${c}`);
-        if (vol != null) lines.push(`量: ${fmtVol(Number(vol))}`);
-        if (pLines && pLines.length) {
-          pLines.forEach(pl => {
-            if (typeof pl.data === 'number') lines.push(`${pl.seriesName}: ${formatQuantity(pl.data)}`);
-          });
+        
+        // Universal fix: Always use original data to ensure accuracy for all symbols
+        const dateIndex = dates.indexOf(date);
+        let o: number, c: number, l: number, h: number;
+        
+        if (dateIndex >= 0 && dateIndex < items.length) {
+          // Always use original data from items array to avoid any tooltip data corruption
+          const item = items[dateIndex];
+          o = item.open;
+          c = item.close;
+          l = Math.min(item.low ?? item.close, item.high ?? item.close);
+          h = Math.max(item.low ?? item.close, item.high ?? item.close);
+        } else {
+          // Fallback to ECharts data if date not found
+          o = arr[0] || 0; c = arr[1] || 0; l = arr[2] || 0; h = arr[3] || 0;
         }
-        return lines.join('<br/>');
+        
+        const vol = (pV?.seriesName === 'Volume') ? ((pV?.data?.value ?? pV?.data ?? null) as number | null) : null;
+        
+        let html = `<div style="padding: 8px;">`;
+        
+        // Date header
+        html += `<div style="font-weight: bold; font-size: 13px; margin-bottom: 8px; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 6px;">${date}</div>`;
+        
+        // Price data (OHLC)
+        if (arr.length) {
+          const isRising = c >= o;
+          const priceColor = isRising ? upColor : downColor;
+          html += `<div style="margin-bottom: 8px;">`;
+          html += `<div style="display: flex; gap: 12px; font-size: 12px;">`;
+          html += `<span style="color: #ccc;">开:</span><span style="color: ${priceColor}; font-weight: bold;">${formatPrice(o)}</span>`;
+          html += `<span style="color: #ccc;">高:</span><span style="color: ${priceColor}; font-weight: bold;">${formatPrice(h)}</span>`;
+          html += `<span style="color: #ccc;">低:</span><span style="color: ${priceColor}; font-weight: bold;">${formatPrice(l)}</span>`;
+          html += `<span style="color: #ccc;">收:</span><span style="color: ${priceColor}; font-weight: bold;">${formatPrice(c)}</span>`;
+          html += `</div>`;
+          html += `</div>`;
+        }
+        
+        // Volume
+        if (vol != null) {
+          html += `<div style="margin-bottom: 8px; font-size: 12px;">`;
+          html += `<span style="color: #ccc;">成交量:</span> <span style="color: #ffa726; font-weight: bold;">${fmtVol(Number(vol))}</span>`;
+          html += `</div>`;
+        }
+        
+        // Technical indicators (MA lines)
+        if (pLines && pLines.length > 0) {
+          html += `<div style="margin-bottom: 8px;">`;
+          const maLines = pLines.filter(pl => pl.seriesName.startsWith('MA'));
+          if (maLines.length > 0) {
+            html += `<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">`;
+            maLines.forEach((pl, idx) => {
+              const color = maColors[idx % maColors.length];
+              if (typeof pl.data === 'number') {
+                html += `<span><span style="color: ${color};">●</span> <span style="color: #ccc;">${pl.seriesName}:</span> <span style="color: ${color}; font-weight: bold;">${formatQuantity(pl.data)}</span></span>`;
+              }
+            });
+            html += `</div>`;
+          }
+          
+          // Other technical indicators
+          const otherLines = pLines.filter(pl => !pl.seriesName.startsWith('MA'));
+          if (otherLines.length > 0) {
+            html += `<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">`;
+            otherLines.forEach(pl => {
+              if (typeof pl.data === 'number') {
+                let indicatorColor = '#42a5f5'; // Default blue
+                if (pl.seriesName.includes('DIF')) indicatorColor = '#ef4444';
+                else if (pl.seriesName.includes('DEA')) indicatorColor = '#3b82f6';
+                else if (pl.seriesName.includes('MACD')) indicatorColor = '#10b981';
+                else if (pl.seriesName.includes('K')) indicatorColor = '#22c55e';
+                else if (pl.seriesName.includes('D')) indicatorColor = '#f59e0b';
+                else if (pl.seriesName.includes('J')) indicatorColor = '#ef4444';
+                else if (pl.seriesName.includes('BIAS')) indicatorColor = '#8b5cf6';
+                
+                html += `<span><span style="color: ${indicatorColor};">●</span> <span style="color: #ccc;">${pl.seriesName}:</span> <span style="color: ${indicatorColor}; font-weight: bold;">${formatQuantity(pl.data)}</span></span>`;
+              }
+            });
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+        
+        // Add trading events information
+        const pBuys = params.filter(p => p.seriesName === 'BUY');
+        const pSells = params.filter(p => p.seriesName === 'SELL');
+        const tradingEvents = [...pBuys, ...pSells];
+        
+        if (tradingEvents.length > 0) {
+          html += `<div style="border-top: 1px solid rgba(255,255,255,0.2); margin-top: 8px; padding-top: 8px;">`;
+          html += `<div style="font-weight: bold; font-size: 12px; margin-bottom: 6px; color: #fff;">💼 交易记录</div>`;
+          
+          tradingEvents.forEach(trade => {
+            const isBuy = trade.seriesName === 'BUY';
+            const action = isBuy ? '买入' : '卖出';
+            const actionColor = isBuy ? upColor : downColor;
+            const actionIcon = isBuy ? '📈' : '📉';
+            const price = trade.value[1];
+            
+            html += `<div style="margin-bottom: 6px; padding: 4px 0;">`;
+            html += `<div style="display: flex; align-items: center; margin-bottom: 2px;">`;
+            html += `<span style="font-size: 14px; margin-right: 4px;">${actionIcon}</span>`;
+            html += `<span style="color: ${actionColor}; font-weight: bold; font-size: 12px;">${action}</span>`;
+            html += `</div>`;
+            html += `<div style="color: #ccc; font-size: 11px; line-height: 1.4; margin-left: 20px;">成交价: <span style="color: ${actionColor}; font-weight: bold;">¥${price}</span></div>`;
+            html += `</div>`;
+          });
+          
+          html += `</div>`;
+        }
+        
+        // Signals section
+        if (pSignals && pSignals.length > 0) {
+          html += `<div style="border-top: 1px solid rgba(255,255,255,0.2); margin-top: 8px; padding-top: 8px;">`;
+          html += `<div style="font-weight: bold; font-size: 12px; margin-bottom: 6px; color: #fff;">📡 交易信号</div>`;
+          
+          pSignals.forEach(ps => {
+            const signal = ps.data.signalData;
+            const config = signalConfigs[signal.type] || { emoji: '📍', name: signal.type, color: '#1890ff' };
+            
+            // Signal level badge
+            let levelBadge = '';
+            if (signal.level) {
+              let levelColor = '#666';
+              let levelText = '';
+              switch(signal.level) {
+                case 'HIGH': levelColor = '#ff4757'; levelText = '高'; break;
+                case 'MEDIUM': levelColor = '#ff9500'; levelText = '中'; break;
+                case 'LOW': levelColor = '#5352ed'; levelText = '低'; break;
+                case 'INFO': levelColor = '#747d8c'; levelText = '信息'; break;
+              }
+              levelBadge = `<span style="background: ${levelColor}; color: white; font-size: 10px; padding: 1px 4px; border-radius: 2px; margin-left: 4px;">${levelText}</span>`;
+            }
+            
+            html += `<div style="margin-bottom: 6px; padding: 4px 0;">`;
+            html += `<div style="display: flex; align-items: center; margin-bottom: 2px;">`;
+            html += `<span style="font-size: 14px; margin-right: 4px;">${config.emoji}</span>`;
+            html += `<span style="color: ${config.color}; font-weight: bold; font-size: 12px;">${config.name}</span>`;
+            html += levelBadge;
+            html += `</div>`;
+            html += `<div style="color: #ccc; font-size: 11px; line-height: 1.4; margin-left: 20px;">${signal.message}</div>`;
+            html += `</div>`;
+          });
+          
+          html += `</div>`;
+        }
+        
+        html += `</div>`;
+        return html;
       }
     },
     legend: legends,

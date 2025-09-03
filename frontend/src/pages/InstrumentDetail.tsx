@@ -290,10 +290,16 @@ export default function InstrumentDetail() {
                     title="K 线（可调周期）" 
                     secType={inst?.type}
                     signals={chartSignals.map(signal => ({
-                      date: signal.trade_date, // 使用信号实际发生的日期
-                      price: null, // 让CandleChart从K线数据中查找对应日期的价格
+                      id: signal.id,
+                      date: signal.trade_date,
+                      price: null,
                       type: signal.type,
-                      message: signal.message
+                      level: signal.level,
+                      message: signal.message,
+                      ts_code: signal.ts_code,
+                      category_id: signal.category_id,
+                      scope_type: signal.scope_type,
+                      created_at: signal.created_at
                     }))}
                   />
                 ),
