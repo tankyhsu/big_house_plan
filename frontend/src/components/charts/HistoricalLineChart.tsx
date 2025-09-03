@@ -1,6 +1,7 @@
 import ReactECharts from "echarts-for-react";
 import dayjs from "dayjs";
 import { useMemo } from "react";
+import { formatQuantity, formatPrice } from "../../utils/format";
 
 export type SeriesPoint = { date: string; value: number | null };
 export type SeriesEntry = { name: string; points: SeriesPoint[] };
@@ -15,9 +16,9 @@ type Props = {
 };
 
 function formatMoney(n: number) {
-  if (n >= 1e8) return (n / 1e8).toFixed(2) + " 亿";
-  if (n >= 1e4) return (n / 1e4).toFixed(2) + " 万";
-  return n.toFixed(0);
+  if (n >= 1e8) return formatQuantity(n / 1e8) + " 亿";
+  if (n >= 1e4) return formatQuantity(n / 1e4) + " 万";
+  return formatQuantity(n);
 }
 
 export default function HistoricalLineChart({ series, normalize = false, height = 340, eventsByCode, lastPriceMap }: Props) {
@@ -36,7 +37,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
         const p = pts.find((pt) => pt.date === d);
         const v = p ? p.value : null;
         if (v == null) return null;
-        return normalize && base > 0 ? Number(((Number(v) / base) * 100).toFixed(2)) : Number(v);
+        return normalize && base > 0 ? Number(formatQuantity((Number(v) / base) * 100)) : Number(v);
       });
       return {
         name: entry?.name || code,
@@ -49,7 +50,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
           show: true,
           formatter: (p: any) => {
             const v = Number(p.value || 0);
-            return normalize ? `${entry?.name || code}: ${v.toFixed(1)}` : `${entry?.name || code}: ${formatMoney(v)}`;
+            return normalize ? `${entry?.name || code}: ${formatQuantity(v)}` : `${entry?.name || code}: ${formatMoney(v)}`;
           },
           distance: 6,
           fontSize: 10,
@@ -71,7 +72,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
         const data = events.map((ev) => {
           const p = pts.find((pt) => pt.date === ev.date);
           const y = p && p.value != null
-            ? (normalize && base > 0 ? Number(((Number(p.value) / base) * 100).toFixed(2)) : Number(p.value))
+            ? (normalize && base > 0 ? Number(formatQuantity((Number(p.value) / base) * 100)) : Number(p.value))
             : null;
           return { value: [ev.date, y], ev };
         });
@@ -88,10 +89,10 @@ export default function HistoricalLineChart({ series, normalize = false, height 
               let retTxt = "";
               if (ev?.price != null && lp != null) {
                 const r = ((lp - ev.price) / ev.price) * 100;
-                retTxt = `，距今：${r.toFixed(2)}%`;
+                retTxt = `，距今：${formatQuantity(r)}%`;
               }
               const action = ev?.action === "BUY" ? "买入" : "卖出";
-              const px = ev?.price != null ? ev.price.toFixed(4) : "—";
+              const px = ev?.price != null ? formatPrice(ev.price) : "—";
               return `${entry?.name || code}｜${action}<br/>日期：${dayjs(p.value[0]).format("YYYY-MM-DD")}<br/>成交价：${px}${retTxt}`;
             },
           },
@@ -107,7 +108,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
     return {
       tooltip: {
         trigger: "axis",
-        valueFormatter: (v: any) => (normalize ? `${Number(v).toFixed(1)}` : `${formatMoney(Number(v))}`),
+        valueFormatter: (v: any) => (normalize ? `${formatQuantity(Number(v))}` : `${formatMoney(Number(v))}`),
       },
       legend: { type: "scroll", top: 0 },
       grid: { left: 24, right: 32, top: 36, bottom: 28, containLabel: true },

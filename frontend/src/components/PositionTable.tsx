@@ -1,7 +1,7 @@
 import { Badge, Table, Typography, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { PositionRow } from "../api/types";
-import { fmtCny, fmtPct } from "../utils/format";
+import { fmtCny, fmtPct, formatQuantity, formatPrice } from "../utils/format";
 import { Link } from "react-router-dom";
 import SignalTags from "./SignalTags";
 import { getSignalsForTsCode } from "../hooks/useRecentSignals";
@@ -25,12 +25,12 @@ export default function PositionTable({ data, loading, signals }: { data: Positi
         </div>
       );
     }},
-    { title: "持仓份额", dataIndex: "shares", align: "right", width: 120, render: (v)=> v ?? "-" },
-    { title: "均价", dataIndex: "avg_cost", align: "right", width: 100, render: (v) => v===null? "-" : v.toFixed(4) },
+    { title: "持仓份额", dataIndex: "shares", align: "right", width: 120, render: (v)=> formatQuantity(v) },
+    { title: "均价", dataIndex: "avg_cost", align: "right", width: 100, render: (v) => formatPrice(v) },
     { title: "现价", dataIndex: "close", align: "right", width: 100,
       render: (v, r) => r.price_source==="eod"
-        ? (v===null? "-" : v.toFixed(4))
-        : <Tooltip title="缺日收；用均价代替"><Badge color="gold" />{v===null? "-" : v.toFixed(4)}</Tooltip>
+        ? formatPrice(v)
+        : <Tooltip title="缺日收；用均价代替"><Badge color="gold" />{formatPrice(v)}</Tooltip>
     },
     { title: "市值", dataIndex: "market_value", align: "right", render: fmtCny },
     { title: "成本", dataIndex: "cost", align: "right", render: fmtCny },

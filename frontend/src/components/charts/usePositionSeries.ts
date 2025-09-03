@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Dayjs } from "dayjs";
 import { fetchPositionSeries } from "../../api/hooks";
 import type { SeriesEntry } from "./HistoricalLineChart";
+import { formatQuantity } from "../../utils/format";
 
 export function usePositionSeries(codes: string[], range: [Dayjs, Dayjs]) {
   const [loading, setLoading] = useState(false);
@@ -18,7 +19,7 @@ export function usePositionSeries(codes: string[], range: [Dayjs, Dayjs]) {
         (res.items || []).forEach(r => {
           const k = r.ts_code;
           if (!map[k]) map[k] = { name: r.name || r.ts_code, points: [] };
-          map[k].points.push({ date: r.date, value: Number((r.market_value || 0).toFixed(2)) });
+          map[k].points.push({ date: r.date, value: Number(formatQuantity(r.market_value || 0)) });
         });
         Object.values(map).forEach(s => s.points.sort((a,b) => a.date.localeCompare(b.date)));
         setSeries(map);

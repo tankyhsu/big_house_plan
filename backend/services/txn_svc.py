@@ -1,7 +1,7 @@
 from ..db import get_conn
 from ..logs import LogContext
 from .config_svc import get_config
-from ..domain.txn_engine import compute_position_after_trade, compute_cash_mirror
+from ..domain.txn_engine import compute_position_after_trade, compute_cash_mirror, round_price, round_quantity, round_shares, round_amount
 from ..repository import txn_repo, position_repo, instrument_repo
 from typing import List, Tuple, Dict
 
@@ -57,22 +57,34 @@ def list_txn(page:int, size:int) -> Tuple[int, List[dict]]:
                     pos_shares = new_shares
                 elif act == "SELL":
                     qty = abs(sh)
-                    pnl = qty * (pr - avg_cost) - fee
+                    pnl = round_amount(qty * (pr - avg_cost) - fee)
                     pnl_map[int(h["id"])] = pnl
-                    pos_shares = round(pos_shares + sh, 8)  # sh 为负
-                    if pos_shares <= 0:
+                    pos_shares = round_shares(pos_shares + sh)  # sh 为负
+                    if pos_shares <= 0.01:  # 调整为2位小数阈值
                         pos_shares = 0.0
                         avg_cost = 0.0
                 else:
                     # DIV/FEE/ADJ 不影响均价法持仓成本计算
                     pass
 
-        # 组装输出
+        # 组装输出，统一处理浮点数精度
         for it in items:
             it["name"] = name_map.get(it["ts_code"])  # 可能为 None
+            
+            # 格式化数字字段的精度
+            if it.get("shares") is not None:
+                it["shares"] = round_shares(float(it["shares"]))
+            if it.get("price") is not None:
+                it["price"] = round_price(float(it["price"]))
+            if it.get("amount") is not None and it["amount"] is not None:
+                it["amount"] = round_amount(float(it["amount"]))
+            if it.get("fee") is not None:
+                it["fee"] = round_amount(float(it["fee"]))
+            
+            # 处理 realized_pnl
             rp = pnl_map.get(int(it["id"]))
             if rp is not None and (it["action"] or "").upper() == "SELL":
-                it["realized_pnl"] = float(rp)
+                it["realized_pnl"] = float(rp)  # rp 已经通过 _round_financial 处理过
             else:
                 it["realized_pnl"] = None
 
@@ -127,13 +139,13 @@ def create_txn(data: dict, log: LogContext) -> dict:
                 cash_row = position_repo.get_position(conn, cash_code)
                 cash_old_shares, cash_old_cost = (cash_row["shares"], cash_row["avg_cost"]) if cash_row else (0.0, 0.0)
                 if amt > 0:
-                    c_new_shares = cash_old_shares + amt
-                    c_total_cost = cash_old_shares * cash_old_cost + amt * 1.0
-                    c_new_cost = (c_total_cost / c_new_shares) if c_new_shares > 0 else 0.0
+                    c_new_shares = round_shares(cash_old_shares + amt)
+                    c_total_cost = round_amount(cash_old_shares * cash_old_cost + amt * 1.0)
+                    c_new_cost = round_price((c_total_cost / c_new_shares) if c_new_shares > 0 else 0.0)
                     position_repo.upsert_position(conn, cash_code, c_new_shares, c_new_cost, date)
                 else:
-                    c_new_shares = round(cash_old_shares - abs(amt), 8)
-                    c_new_cost = 0.0 if abs(c_new_shares) < 1e-12 else cash_old_cost
+                    c_new_shares = round_shares(cash_old_shares - abs(amt))
+                    c_new_cost = 0.0 if abs(c_new_shares) < 0.01 else cash_old_cost
                     position_repo.upsert_position(conn, cash_code, c_new_shares, c_new_cost, date)
         elif not is_cash_inst:
             # 现金镜像（由 domain engine 决策）
@@ -148,14 +160,14 @@ def create_txn(data: dict, log: LogContext) -> dict:
                 cash_row = position_repo.get_position(conn, cash_code)
                 cash_old_shares, cash_old_cost = (cash_row["shares"], cash_row["avg_cost"]) if cash_row else (0.0, 0.0)
                 if mirror_action == "BUY":
-                    c_new_shares = cash_old_shares + mirror_abs_shares
-                    c_total_cost = cash_old_shares * cash_old_cost + mirror_abs_shares * 1.0
-                    c_new_cost = (c_total_cost / c_new_shares) if c_new_shares > 0 else 0.0
+                    c_new_shares = round_shares(cash_old_shares + mirror_abs_shares)
+                    c_total_cost = round_amount(cash_old_shares * cash_old_cost + mirror_abs_shares * 1.0)
+                    c_new_cost = round_price((c_total_cost / c_new_shares) if c_new_shares > 0 else 0.0)
                     position_repo.upsert_position(conn, cash_code, c_new_shares, c_new_cost, date)
                 else:  # SELL 现金
-                    c_new_shares = round(cash_old_shares - mirror_abs_shares, 8)
+                    c_new_shares = round_shares(cash_old_shares - mirror_abs_shares)
                     # 允许现金为负代表透支；仅在归零时将均价清 0，其余保留旧均价（通常为 1）
-                    c_new_cost = 0.0 if abs(c_new_shares) < 1e-12 else cash_old_cost
+                    c_new_cost = 0.0 if abs(c_new_shares) < 0.01 else cash_old_cost
                     position_repo.upsert_position(conn, cash_code, c_new_shares, c_new_cost, date)
         conn.commit()
         pos = position_repo.get_position(conn, ts_code)

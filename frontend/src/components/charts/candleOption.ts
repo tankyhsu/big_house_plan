@@ -1,4 +1,5 @@
 import { computeBias, computeKdj, computeMacd, mapVolumes, sma as SMA } from "./indicators";
+import { formatQuantity } from "../../utils/format";
 
 type Item = { date: string; open: number; high?: number | null; low?: number | null; close: number; vol?: number | null };
 type Trade = { date: string; price: number };
@@ -154,8 +155,8 @@ export function buildCandleOption(params: {
   }
 
   function fmtVol(n: number) {
-    if (n >= 1e8) return (n / 1e8).toFixed(2) + ' 亿';
-    if (n >= 1e4) return (n / 1e4).toFixed(2) + ' 万';
+    if (n >= 1e8) return formatQuantity(n / 1e8) + ' 亿';
+    if (n >= 1e4) return formatQuantity(n / 1e4) + ' 万';
     return String(Math.round(n));
   }
 
@@ -182,8 +183,84 @@ export function buildCandleOption(params: {
   maList.forEach((p, idx) => {
     series.push({ type: 'line', name: `MA${p}`, data: SMAfor(p), smooth: true, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { width: 1.5, color: maColors[idx % maColors.length] }, connectNulls: false, z: 2 });
   });
-  series.push({ type: 'scatter', name: 'BUY', data: buys.map(p => [p.date, p.price]), symbol: 'triangle', symbolSize: 8, itemStyle: { color: upColor }, xAxisIndex: 0, yAxisIndex: 0, z: 3 });
-  series.push({ type: 'scatter', name: 'SELL', data: sells.map(p => [p.date, p.price]), symbol: 'triangle', symbolRotate: 180, symbolSize: 8, itemStyle: { color: downColor }, xAxisIndex: 0, yAxisIndex: 0, z: 3 });
+  // Enhanced buy/sell markers with text labels
+  series.push({ 
+    type: 'scatter', 
+    name: 'BUY', 
+    data: buys.map(p => ({
+      value: [p.date, p.price],
+      label: {
+        show: true,
+        position: 'top',
+        formatter: '买入',
+        textStyle: {
+          color: upColor,
+          fontSize: 11,
+          fontWeight: 'bold',
+          backgroundColor: '#fff',
+          padding: [1, 3],
+          borderRadius: 3,
+          borderColor: upColor,
+          borderWidth: 1,
+          shadowColor: upColor,
+          shadowBlur: 3,
+          shadowOffsetY: 1
+        }
+      }
+    })), 
+    symbol: 'triangle', 
+    symbolSize: 10, 
+    itemStyle: { 
+      color: upColor,
+      borderColor: '#fff',
+      borderWidth: 2,
+      shadowColor: upColor,
+      shadowBlur: 6,
+      shadowOffsetY: 2
+    }, 
+    xAxisIndex: 0, 
+    yAxisIndex: 0, 
+    z: 3 
+  });
+  series.push({ 
+    type: 'scatter', 
+    name: 'SELL', 
+    data: sells.map(p => ({
+      value: [p.date, p.price],
+      label: {
+        show: true,
+        position: 'bottom',
+        formatter: '卖出',
+        textStyle: {
+          color: downColor,
+          fontSize: 11,
+          fontWeight: 'bold',
+          backgroundColor: '#fff',
+          padding: [1, 3],
+          borderRadius: 3,
+          borderColor: downColor,
+          borderWidth: 1,
+          shadowColor: downColor,
+          shadowBlur: 3,
+          shadowOffsetY: 1
+        }
+      }
+    })), 
+    symbol: 'triangle', 
+    symbolRotate: 180, 
+    symbolSize: 10, 
+    itemStyle: { 
+      color: downColor,
+      borderColor: '#fff',
+      borderWidth: 2,
+      shadowColor: downColor,
+      shadowBlur: 6,
+      shadowOffsetY: 2
+    }, 
+    xAxisIndex: 0, 
+    yAxisIndex: 0, 
+    z: 3 
+  });
   
   // Add all signal types with unified rendering logic
   Object.entries(signalGroups).forEach(([signalType, signalsOfType]) => {
@@ -334,7 +411,7 @@ export function buildCandleOption(params: {
         if (vol != null) lines.push(`量: ${fmtVol(Number(vol))}`);
         if (pLines && pLines.length) {
           pLines.forEach(pl => {
-            if (typeof pl.data === 'number') lines.push(`${pl.seriesName}: ${pl.data.toFixed(2)}`);
+            if (typeof pl.data === 'number') lines.push(`${pl.seriesName}: ${formatQuantity(pl.data)}`);
           });
         }
         return lines.join('<br/>');

@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import type { PositionRaw, InstrumentLite, CategoryLite, SignalRow } from "../api/types";
 import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, cleanupZeroPositions, lookupInstrument } from "../api/hooks";
 import SignalTags from "../components/SignalTags";
+import { formatPrice, fmtPct } from "../utils/format";
 import { getSignalsForTsCode } from "../hooks/useRecentSignals";
 
 export default function PositionEditor() {
@@ -260,7 +261,7 @@ export default function PositionEditor() {
       dataIndex: "avg_cost",
       align: "right",
       sorter: (a, b) => Number(a.avg_cost || 0) - Number(b.avg_cost || 0),
-      render: (_, record) => (record.avg_cost ?? 0).toFixed(4),
+      render: (_, record) => formatPrice(record.avg_cost ?? 0),
     },
     {
       title: "最后更新",
@@ -294,7 +295,7 @@ export default function PositionEditor() {
         const reason = item?.reason;
         return (
           <>
-            {typeof irr === "number" ? `${(irr * 100).toFixed(2)}%` : "—"}
+            {typeof irr === "number" ? fmtPct(irr) : "—"}
             {reason === "fallback_opening_date" && (
               <Tooltip
                 title="近似估算：无交易流水，按“建仓日→估值日”和当前收益率推算年化（非资金加权 IRR）。"

@@ -1,4 +1,32 @@
 from typing import Optional, Tuple
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def _round_financial(value: float, precision: int = 8) -> float:
+    """Round financial values with consistent precision using Decimal."""
+    if value == 0.0:
+        return 0.0
+    return float(Decimal(str(value)).quantize(Decimal('0.' + '0' * precision), rounding=ROUND_HALF_UP))
+
+
+def round_price(value: float) -> float:
+    """Round price values to 4 decimal places."""
+    return _round_financial(value, 4)
+
+
+def round_quantity(value: float) -> float:
+    """Round quantity values to 2 decimal places."""
+    return _round_financial(value, 2)
+
+
+def round_shares(value: float) -> float:
+    """Round share quantities to 2 decimal places (legacy: was 8)."""
+    return _round_financial(value, 2)
+
+
+def round_amount(value: float) -> float:
+    """Round monetary amounts to 4 decimal places."""
+    return _round_financial(value, 4)
 
 
 def compute_position_after_trade(
@@ -23,13 +51,13 @@ def compute_position_after_trade(
     f = float(fee or 0.0)
 
     if action_u == "BUY":
-        new_shares = old_shares + qty_abs
-        total_cost = old_shares * old_avg_cost + qty_abs * p + f
-        new_cost = (total_cost / new_shares) if new_shares > 0 else 0.0
+        new_shares = round_shares(old_shares + qty_abs)
+        total_cost = round_amount(old_shares * old_avg_cost + qty_abs * p + f)
+        new_cost = round_price((total_cost / new_shares) if new_shares > 0 else 0.0)
         return new_shares, new_cost
     elif action_u == "SELL":
-        new_shares = round(old_shares - qty_abs, 8)
-        new_cost = old_avg_cost if new_shares > 0 else 0.0
+        new_shares = round_shares(old_shares - qty_abs)
+        new_cost = old_avg_cost if new_shares > 0.01 else 0.0  # 调整阈值
         return new_shares, new_cost
     else:
         # DIV / FEE / ADJ: no change to instrument position
@@ -62,18 +90,18 @@ def compute_cash_mirror(
     gross = float(amt_field) if amt_field is not None else (qty_abs * p)
 
     if action_u == "BUY":
-        return "SELL", max(0.0, gross + f)
+        return "SELL", round_amount(max(0.0, gross + f))
     if action_u == "SELL":
-        return "BUY", max(0.0, gross - f)
+        return "BUY", round_amount(max(0.0, gross - f))
     if action_u == "DIV":
-        return "BUY", max(0.0, gross)
+        return "BUY", round_amount(max(0.0, gross))
     if action_u == "FEE":
-        return "SELL", max(0.0, (f if f else gross))
+        return "SELL", round_amount(max(0.0, (f if f else gross)))
     if action_u == "ADJ":
         a = float(amt_field or 0.0)
         if a > 0:
-            return "BUY", a
+            return "BUY", round_amount(a)
         if a < 0:
-            return "SELL", -a
+            return "SELL", round_amount(-a)
     return None, 0.0
 

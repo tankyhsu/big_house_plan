@@ -20,6 +20,7 @@ from .services.position_svc import list_positions_raw, set_opening_position, upd
 from .services.instrument_svc import create_instrument, list_instruments, seed_load, get_instrument_detail, edit_instrument
 from .services.category_svc import create_category, list_categories
 from .services.txn_svc import create_txn, list_txn, bulk_txn
+from .domain.txn_engine import round_price, round_quantity, round_shares, round_amount
 from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
 from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal, list_signal_all, aggregate_kpi
@@ -139,7 +140,7 @@ def api_series_position(
                     "date": r["date"],
                     "ts_code": r["ts_code"],
                     "name": r["name"],
-                    "market_value": float(r["market_value"] or 0.0),
+                    "market_value": round_amount(float(r["market_value"] or 0.0)),
                 }
                 for r in rows
             ]
@@ -467,10 +468,10 @@ def api_txn_range(
                     "ts_code": r["ts_code"],
                     "name": r["name"],
                     "action": r["action"],
-                    "shares": float(r["shares"] or 0.0),
-                    "price": (float(r["price"]) if r["price"] is not None else None),
-                    "amount": (float(r["amount"]) if r["amount"] is not None else None),
-                    "fee": (float(r["fee"]) if r["fee"] is not None else None),
+                    "shares": round_shares(float(r["shares"] or 0.0)),
+                    "price": (round_price(float(r["price"])) if r["price"] is not None else None),
+                    "amount": (round_amount(float(r["amount"])) if r["amount"] is not None else None),
+                    "fee": (round_amount(float(r["fee"])) if r["fee"] is not None else None),
                 }
                 for r in rows
             ]
@@ -792,15 +793,15 @@ def api_price_ohlc(
             rows = conn.execute(sql, (ts_code, sd, ed)).fetchall()
         items = []
         for r in rows:
-            c = float(r["close"]) if r["close"] is not None else None
+            c = round_price(float(r["close"])) if r["close"] is not None else None
             # 若 open/high/low 缺失，退化为 close（平盘蜡烛）
-            o = float(r["open"]) if r["open"] is not None else (c if c is not None else None)
-            h = float(r["high"]) if r["high"] is not None else (c if c is not None else None)
-            l = float(r["low"]) if r["low"] is not None else (c if c is not None else None)
+            o = round_price(float(r["open"])) if r["open"] is not None else (c if c is not None else None)
+            h = round_price(float(r["high"])) if r["high"] is not None else (c if c is not None else None)
+            l = round_price(float(r["low"])) if r["low"] is not None else (c if c is not None else None)
             if c is None:
                 # 若 close 也缺失，跳过该行
                 continue
-            v = float(r["vol"]) if ("vol" in r.keys() and r["vol"] is not None) else None
+            v = round_quantity(float(r["vol"])) if ("vol" in r.keys() and r["vol"] is not None) else None
             items.append({
                 "date": r["trade_date"],
                 "open": o,

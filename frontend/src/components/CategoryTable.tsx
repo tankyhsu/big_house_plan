@@ -1,7 +1,7 @@
 import { Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { CategoryRow } from "../api/types";
-import { fmtCny, fmtPct, formatNumber } from "../utils/format";
+import { fmtPct, formatQuantity } from "../utils/format";
 
 // 头部 import 无需变
 
@@ -80,14 +80,14 @@ export default function CategoryTable({ data, loading, header = true, height }: 
       dataIndex: "target_units",
       align: "right",
       width: 80,
-      render: (v: number) => formatNumber(v, 2),
+      render: (v: number) => formatQuantity(v),
     },
     {
       title: "实际份",
       dataIndex: "actual_units",
       align: "right",
       width: 80,
-      render: (v: number) => formatNumber(v, 2),
+      render: (v: number) => formatQuantity(v),
     },
     // 删除：市值/成本/收益 三列，保留核心配置与收益率
     { title: "收益率", dataIndex: "ret", align: "right", render: fmtPct, width: 80 },

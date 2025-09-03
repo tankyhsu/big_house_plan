@@ -2,6 +2,7 @@
 import pandas as pd
 from ..db import get_conn
 from ..repository import reporting_repo
+from ..domain.txn_engine import round_price, round_quantity, round_shares, round_amount
 from .utils import yyyyMMdd_to_dash
 from .config_svc import get_config
 from datetime import datetime, timedelta
@@ -103,11 +104,11 @@ def list_category(date_yyyymmdd: str) -> list[dict]:
         out.append({
             "category_id": int(r["category_id"]),
             "name": r["name"], "sub_name": r["sub_name"],
-            "target_units": float(r["target_units"]),
-            "actual_units": float(r["actual_units"]),
-            "gap_units": float(gap),
-            "market_value": float(r["market_value"]), "cost": float(r["cost"]),
-            "pnl": float(r["pnl"]), "ret": (float(r["ret"]) if r["ret"]==r["ret"] else None),
+            "target_units": round_amount(float(r["target_units"])),
+            "actual_units": round_amount(float(r["actual_units"])),
+            "gap_units": round_amount(float(gap)),
+            "market_value": round_amount(float(r["market_value"])), "cost": round_amount(float(r["cost"])),
+            "pnl": round_amount(float(r["pnl"])), "ret": (round_amount(float(r["ret"])) if r["ret"]==r["ret"] else None),
             "overweight": int(r["overweight"]),
             "suggest_units": round(gap) if gap is not None else None
         })

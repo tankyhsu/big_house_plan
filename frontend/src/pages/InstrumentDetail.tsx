@@ -7,6 +7,7 @@ import SignalTags from "../components/SignalTags";
 import type { CategoryLite, InstrumentDetail, SignalRow } from "../api/types";
 import dayjs, { Dayjs } from "dayjs";
 import type { ColumnsType } from "antd/es/table";
+import { formatPrice, formatQuantity } from "../utils/format";
 
 export default function InstrumentDetail() {
   const { ts_code = "" } = useParams();
@@ -158,9 +159,9 @@ export default function InstrumentDetail() {
     { title: "日期", dataIndex: "date", width: 110 },
     { title: "动作", dataIndex: "action", width: 80 },
     { title: "份额", dataIndex: "shares", align: "right", width: 100, render: (v: any) => Number(v ?? 0) },
-    { title: "价格", dataIndex: "price", align: "right", width: 100, render: (v: any) => v != null ? Number(v).toFixed(4) : "-" },
-    { title: "金额", dataIndex: "amount", align: "right", width: 120, render: (v: any) => v != null ? Number(v).toFixed(2) : "-" },
-    { title: "费用", dataIndex: "fee", align: "right", width: 100, render: (v: any) => v != null ? Number(v).toFixed(2) : "-" },
+    { title: "价格", dataIndex: "price", align: "right", width: 100, render: (v: any) => formatPrice(Number(v)) },
+    { title: "金额", dataIndex: "amount", align: "right", width: 120, render: (v: any) => formatQuantity(Number(v)) },
+    { title: "费用", dataIndex: "fee", align: "right", width: 100, render: (v: any) => formatQuantity(Number(v)) },
   ]), []);
 
   return (
@@ -199,9 +200,9 @@ export default function InstrumentDetail() {
                 const color = isUp ? '#f04438' : (isDown ? '#12b76a' : '#667085');
                 return (
                   <span style={{ fontWeight: 600, color }}>
-                    {c.toFixed(4)}
+                    {formatPrice(c)}
                     <span style={{ marginLeft: 10, fontWeight: 500 }}>
-                      {diff >= 0 ? '+' : ''}{diff.toFixed(4)} ({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)
+                      {diff >= 0 ? '+' : ''}{formatPrice(diff)} ({pct >= 0 ? '+' : ''}{formatQuantity(pct)}%)
                     </span>
                     {lastPrice.date && (
                       <span style={{ marginLeft: 8, color: '#98A2B3', fontWeight: 400 }}>[{lastPrice.date}]</span>

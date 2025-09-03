@@ -3,6 +3,7 @@ import ReactECharts from "echarts-for-react";
 import { Card } from "antd";
 import { fetchCategory } from "../../api/hooks";
 import dayjs from "dayjs";
+import { formatQuantity } from "../../utils/format";
 
 type PieDatum = { name: string; value: number };
 
@@ -17,7 +18,7 @@ export default function PositionPie({ date }: { date?: string }) {
         .map(r => ({
           // 仅显示二级分类；若无二级分类则退化为一级名称
           name: r.sub_name && r.sub_name.trim() ? r.sub_name : r.name,
-          value: Number((r.market_value || 0).toFixed(2)),
+          value: Number(formatQuantity(r.market_value || 0)),
         }));
       setData(items);
     }).catch(() => setData([]));

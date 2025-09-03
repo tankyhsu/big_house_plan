@@ -3,14 +3,15 @@ import ReactECharts from "echarts-for-react";
 import { Card, DatePicker, Space, Button } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { fetchDashboardAgg } from "../../api/hooks";
+import { formatQuantity } from "../../utils/format";
 
 // 备用：按步长生成日期序列（当前未使用）
 
 // 金额显示友好化（万/亿）
 function formatMoney(n: number) {
-  if (n >= 1e8) return (n / 1e8).toFixed(2) + " 亿";
-  if (n >= 1e4) return (n / 1e4).toFixed(2) + " 万";
-  return n.toFixed(0);
+  if (n >= 1e8) return formatQuantity(n / 1e8) + " 亿";
+  if (n >= 1e4) return formatQuantity(n / 1e4) + " 万";
+  return formatQuantity(n);
 }
 
 export default function TotalAssetsLine() {
@@ -31,7 +32,7 @@ export default function TotalAssetsLine() {
     const end = range[1].format("YYYYMMDD");
     fetchDashboardAgg(start, end, period)
       .then((res) => {
-        const rows = (res.items || []).map((it) => ({ date: it.date, value: Number((it.market_value || 0).toFixed(2)) }));
+        const rows = (res.items || []).map((it) => ({ date: it.date, value: Number(formatQuantity(it.market_value || 0)) }));
         setSeries(rows);
       })
       .catch(() => setSeries([]))

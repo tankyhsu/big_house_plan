@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite } from "../api/types";
 import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice } from "../api/hooks";
 import type { PositionRaw } from "../api/types";
+import { formatQuantity, formatPrice, fmtPct } from "../utils/format";
 
 const ACTIONS = ["BUY", "SELL", "DIV", "FEE", "ADJ"] as const;
 
@@ -197,16 +198,16 @@ export default function TxnPage() {
         v === "BUY" ? <Tag color="green">BUY</Tag> :
         v === "SELL" ? <Tag color="red">SELL</Tag> : <Tag>{v}</Tag>
     },
-    { title: "数量", dataIndex: "shares", align: "right", width: 100 },
-    { title: "价格", dataIndex: "price", align: "right", width: 100, render: (v) => v == null ? "-" : v.toFixed(4) },
-    { title: "费用", dataIndex: "fee", align: "right", width: 100, render: (v) => v == null ? "-" : v.toFixed(2) },
+    { title: "数量", dataIndex: "shares", align: "right", width: 100, render: (v) => formatQuantity(v) },
+    { title: "价格", dataIndex: "price", align: "right", width: 100, render: (v) => formatPrice(v) },
+    { title: "费用", dataIndex: "fee", align: "right", width: 100, render: (v) => formatQuantity(v) },
     { title: "本次收益", dataIndex: "realized_pnl", align: "right", width: 120,
       render: (v, row) => {
         if (row.action !== "SELL" || v == null) return "-";
         const n = Number(v);
         const color = n > 0 ? "#cf1322" : (n < 0 ? "#096dd9" : undefined);
         const sign = n > 0 ? "+" : "";
-        return <span style={{ color }}>{sign}{n.toFixed(2)}</span>;
+        return <span style={{ color }}>{sign}{formatQuantity(n)}</span>;
       }
     },
     { title: "备注", dataIndex: "notes" },
@@ -459,14 +460,14 @@ export default function TxnPage() {
                 成本价：{curAvgCost != null ? curAvgCost : "-"}
               </Typography.Text>
               <Typography.Text type="secondary">
-                最新价：{lastClose != null ? lastClose : "-"}
+                最新价：{lastClose != null ? formatPrice(lastClose) : "-"}
               </Typography.Text>
               <Typography.Text type="secondary">
-                收益率：{retPct != null ? (retPct * 100).toFixed(2) + "%" : "-"}
+                收益率：{retPct != null ? fmtPct(retPct) : "-"}
               </Typography.Text>
               {tradePnl != null && (
                 <Typography.Text style={{ color: tradePnl > 0 ? "#cf1322" : tradePnl < 0 ? "#096dd9" : undefined }}>
-                  本次收益：{tradePnl > 0 ? "+" : ""}{tradePnl.toFixed(2)}
+                  本次收益：{tradePnl > 0 ? "+" : ""}{formatQuantity(tradePnl)}
                 </Typography.Text>
               )}
               {curShares && curShares > 0 && form.getFieldValue("action") === "SELL" && (
