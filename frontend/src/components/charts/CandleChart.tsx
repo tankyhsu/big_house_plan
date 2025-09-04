@@ -5,7 +5,8 @@ import { buildCandleOption } from "./candleOption";
 // Indicator computations and option building are handled in separate modules.
 import CandleToolbar from "./CandleToolbar";
 import { useCandleData } from "./hooks/useCandleData";
-import type { SignalDetail } from "../../api/types";
+import { fetchKlineConfig } from "../../api/hooks";
+import type { SignalDetail, KlineConfig } from "../../api/types";
 
 type Props = {
   tsCode: string;
@@ -23,6 +24,7 @@ export default function CandleChart({ tsCode, months = 6, height = 300, title = 
   const [maList, setMaList] = useState<number[]>([20, 30, 60]);
   const [fullscreen, setFullscreen] = useState(false);
   const [viewportH, setViewportH] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 900);
+  const [klineConfig, setKlineConfig] = useState<KlineConfig | null>(null);
 
 
   useEffect(() => {
@@ -30,6 +32,27 @@ export default function CandleChart({ tsCode, months = 6, height = 300, title = 
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // 获取持仓配置信息用于阈值线展示
+  useEffect(() => {
+    const loadKlineConfig = async () => {
+      try {
+        // 使用当前日期获取持仓配置
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const config = await fetchKlineConfig(tsCode, today);
+        setKlineConfig(config);
+      } catch (error) {
+        console.warn('Failed to load kline config:', error);
+        setKlineConfig(null);
+      }
+    };
+
+    if (tsCode && tsCode !== 'CASH') {
+      loadKlineConfig();
+    } else {
+      setKlineConfig(null);
+    }
+  }, [tsCode]);
 
   // 解析均线输入
   const applyMaInput = () => {
@@ -45,8 +68,8 @@ export default function CandleChart({ tsCode, months = 6, height = 300, title = 
 
   // New: decoupled builder usage (keeps layout identical)
   const built = useMemo(
-    () => buildCandleOption({ items: items as any, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen }),
-    [items, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen]
+    () => buildCandleOption({ items: items as any, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen, klineConfig }),
+    [items, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen, klineConfig]
   );
 
   // 现金类不展示 K 线与指标

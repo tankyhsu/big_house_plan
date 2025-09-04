@@ -1,5 +1,5 @@
 import client from "./client";
-import type { DashboardResp, CategoryRow, PositionRow, SignalRow, TxnCreate } from "./types";
+import type { DashboardResp, CategoryRow, PositionRow, SignalRow, TxnCreate, PositionStatus, KlineConfig } from "./types";
 
 export async function fetchDashboard(date: string): Promise<DashboardResp> {
   const { data } = await client.get("/api/dashboard", { params: { date } });
@@ -239,4 +239,32 @@ export async function uploadRestore(file: File): Promise<{ message: string }> {
   });
   
   return data;
+}
+
+// 新增：获取持仓状态信息（用于K线图阈值线展示）
+export async function fetchPositionStatus(date: string, ts_code?: string): Promise<PositionStatus[]> {
+  const params: any = { date };
+  if (ts_code) params.ts_code = ts_code;
+  const { data } = await client.get("/api/positions/status", { params });
+  return Array.isArray(data) ? data : [data].filter(Boolean);
+}
+
+// 计算K线图配置信息
+export async function fetchKlineConfig(ts_code: string, date: string): Promise<KlineConfig | null> {
+  try {
+    const positionStatus = await fetchPositionStatus(date, ts_code);
+    if (!positionStatus || positionStatus.length === 0) return null;
+    
+    const position = positionStatus[0];
+    return {
+      avg_cost: position.avg_cost,
+      stop_gain_threshold: position.stop_gain_threshold,
+      stop_loss_threshold: position.stop_loss_threshold,
+      stop_gain_price: position.avg_cost * (1 + position.stop_gain_threshold),
+      stop_loss_price: position.avg_cost * (1 - position.stop_loss_threshold)
+    };
+  } catch (error) {
+    console.warn('Failed to fetch kline config:', error);
+    return null;
+  }
 }

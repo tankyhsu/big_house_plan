@@ -2,6 +2,7 @@ export type DashboardResp = {
   date: string;
   kpi: { market_value: number; cost: number; unrealized_pnl: number; ret: number | null };
   signals: { stop_gain: number; overweight: number };
+  position_status: { stop_gain: number; stop_loss: number; normal: number }; // 新增：实时持仓状态
   price_fallback_used: boolean;
 };
 
@@ -149,4 +150,28 @@ export type SignalDetail = {
   category_id?: number | null;
   scope_type?: string;
   created_at?: string;
+};
+
+// 新增：持仓状态类型定义
+export type PositionStatus = {
+  ts_code: string;
+  category_id?: number;
+  shares: number;
+  avg_cost: number;
+  current_price: number;
+  return_rate: number;
+  status: "STOP_GAIN" | "STOP_LOSS" | "NORMAL";
+  stop_gain_threshold: number;
+  stop_loss_threshold: number;
+  message: string;
+  price_fallback_used: boolean;
+};
+
+// K线图的配置信息
+export type KlineConfig = {
+  avg_cost: number;
+  stop_gain_threshold: number;
+  stop_loss_threshold: number;
+  stop_gain_price: number;
+  stop_loss_price: number;
 };

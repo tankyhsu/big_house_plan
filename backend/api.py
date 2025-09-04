@@ -26,6 +26,7 @@ from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
 from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal, list_signal_all, aggregate_kpi
 from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
+from .services.utils import yyyyMMdd_to_dash
 from .db import get_conn
 from .repository.instrument_repo import set_active as repo_set_active
 from .services.config_svc import ensure_default_config
@@ -224,6 +225,56 @@ def api_signal_create(signal: SignalCreate):
         message=signal.message
     )
     return {"message": "信号创建成功", "signal_id": result}
+
+@app.get("/api/signals/current-status")
+def api_signals_current_status(date: str = Query(..., pattern=r"^\d{8}$")):
+    """
+    获取当前信号状态聚合：分离历史事件信号和实时持仓状态
+    返回格式：
+    {
+        "event_signals": [...],     # 历史事件信号（来自signal表）
+        "position_status": [...],   # 实时持仓状态（基于成本计算）
+        "summary": {
+            "event_counts": {"stop_gain": 0, "stop_loss": 1},
+            "position_counts": {"stop_gain": 2, "stop_loss": 0, "normal": 5}
+        }
+    }
+    """
+    from .services.signal_svc import SignalService
+    from .services.position_status_svc import PositionStatusService
+    
+    # 获取历史事件信号
+    event_signals = SignalService.get_signals_by_date(date)
+    
+    # 获取实时持仓状态  
+    position_status = PositionStatusService.get_current_position_status(date)
+    
+    # 统计汇总
+    event_counts = SignalService.get_signal_counts_by_date(yyyyMMdd_to_dash(date))
+    position_counts = PositionStatusService.get_position_alerts_count(date)
+    
+    return {
+        "date": yyyyMMdd_to_dash(date),
+        "event_signals": event_signals,
+        "position_status": position_status, 
+        "summary": {
+            "event_counts": {"stop_gain": event_counts.get("stop_gain", 0), "stop_loss": event_counts.get("stop_loss", 0)},
+            "position_counts": position_counts
+        }
+    }
+
+@app.get("/api/positions/status")
+def api_positions_status(date: str = Query(..., pattern=r"^\d{8}$"), ts_code: Optional[str] = Query(None)):
+    """
+    获取持仓实时状态：基于成本的客观计算结果
+    """
+    from .services.position_status_svc import PositionStatusService
+    
+    if ts_code:
+        result = PositionStatusService.get_position_status_by_instrument(ts_code, date)
+        return result if result else {"error": "未找到该标的的持仓"}
+    else:
+        return PositionStatusService.get_current_position_status(date)
 
 
 # =============================================================================

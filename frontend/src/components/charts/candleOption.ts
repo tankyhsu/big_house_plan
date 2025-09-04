@@ -4,6 +4,7 @@ import { formatQuantity, formatPrice } from "../../utils/format";
 type Item = { date: string; open: number; high?: number | null; low?: number | null; close: number; vol?: number | null };
 type Trade = { date: string; price: number };
 type Signal = { date: string; price: number | null; type: string; message: string };
+type KlineConfig = { avg_cost: number; stop_gain_threshold: number; stop_loss_threshold: number; stop_gain_price: number; stop_loss_price: number } | null;
 
 export function buildCandleOption(params: {
   items: Item[];
@@ -15,8 +16,9 @@ export function buildCandleOption(params: {
   signals: Signal[];
   viewportH: number;
   fullscreen: boolean;
+  klineConfig?: KlineConfig;
 }) {
-  const { items, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen } = params;
+  const { items, tsCode, secType, maList, buys, sells, signals, viewportH, fullscreen, klineConfig } = params;
   
 
   const dates = items.map(it => it.date);
@@ -39,8 +41,13 @@ export function buildCandleOption(params: {
   const downColor = "#12b76a"; // 绿跌
   const volumes = mapVolumes(items as any, upColor, downColor);
 
+  // 过滤掉止盈止损信号，因为我们要用阈值线替代时间点信号
+  const filteredSignals = signals.filter(signal => 
+    signal.type !== 'STOP_GAIN' && signal.type !== 'STOP_LOSS'
+  );
+  
   // Process signals early to use in series
-  // console.log('📊 Building candle chart with signals:', signals);
+  // console.log('📊 Building candle chart with signals:', filteredSignals);
   // console.log('📊 K-line data dates range:', items.length > 0 ? `${items[0]?.date} to ${items[items.length-1]?.date}` : 'no data');
   
   // Helper function to find price for a signal date
@@ -60,7 +67,7 @@ export function buildCandleOption(params: {
   };
   
   // Process signals and resolve prices - only include signals that have valid prices
-  const processedSignals = signals.map(signal => {
+  const processedSignals = filteredSignals.map(signal => {
     const price = signal.price || findPriceForDate(signal.date);
     if (price === null || price === undefined) return null;
     
@@ -199,6 +206,76 @@ export function buildCandleOption(params: {
   maList.forEach((p, idx) => {
     series.push({ type: 'line', name: `MA${p}`, data: SMAfor(p), smooth: true, showSymbol: false, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { width: 1.5, color: maColors[idx % maColors.length] }, connectNulls: false, z: 2 });
   });
+
+  // 添加持仓成本线和止盈止损阈值线
+  if (klineConfig) {
+    const avgCostData = Array(dates.length).fill(klineConfig.avg_cost);
+    const stopGainData = Array(dates.length).fill(klineConfig.stop_gain_price);
+    const stopLossData = Array(dates.length).fill(klineConfig.stop_loss_price);
+
+    // 成本线 - 显示持仓平均成本价格
+    series.push({
+      type: 'line',
+      name: `成本线 (¥${klineConfig.avg_cost.toFixed(2)})`,
+      data: avgCostData,
+      showSymbol: false,
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      lineStyle: {
+        width: 1,
+        color: '#666666',
+        type: 'dashed',
+        opacity: 0.8
+      },
+      connectNulls: false,
+      z: 3,
+      tooltip: {
+        formatter: () => `成本线: ¥${klineConfig.avg_cost.toFixed(2)}`
+      }
+    });
+
+    // 止盈阈值线 - 基于成本价计算的止盈目标价格
+    series.push({
+      type: 'line',
+      name: `止盈线 (+${(klineConfig.stop_gain_threshold * 100).toFixed(0)}% ¥${klineConfig.stop_gain_price.toFixed(2)})`,
+      data: stopGainData,
+      showSymbol: false,
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      lineStyle: {
+        width: 1,
+        color: '#10b981',
+        type: 'dashed',
+        opacity: 0.8
+      },
+      connectNulls: false,
+      z: 3,
+      tooltip: {
+        formatter: () => `止盈线: ¥${klineConfig.stop_gain_price.toFixed(2)} (+${(klineConfig.stop_gain_threshold * 100).toFixed(0)}%)`
+      }
+    });
+
+    // 止损阈值线 - 基于成本价计算的止损价格
+    series.push({
+      type: 'line',
+      name: `止损线 (-${(klineConfig.stop_loss_threshold * 100).toFixed(0)}% ¥${klineConfig.stop_loss_price.toFixed(2)})`,
+      data: stopLossData,
+      showSymbol: false,
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      lineStyle: {
+        width: 1,
+        color: '#ef4444',
+        type: 'dashed',
+        opacity: 0.8
+      },
+      connectNulls: false,
+      z: 3,
+      tooltip: {
+        formatter: () => `止损线: ¥${klineConfig.stop_loss_price.toFixed(2)} (-${(klineConfig.stop_loss_threshold * 100).toFixed(0)}%)`
+      }
+    });
+  }
   // Enhanced buy/sell markers with text labels
   series.push({ 
     type: 'scatter', 
@@ -299,11 +376,11 @@ export function buildCandleOption(params: {
         let signalPrice: number;
         
         if (config.position === 'bottom') {
-          const lowPrice = item ? (item.low ?? item.close) : signal.price;
-          signalPrice = lowPrice * config.offsetMultiplier;
+          const lowPrice = item ? (item.low ?? item.close) : (signal.price ?? 0);
+          signalPrice = (lowPrice || 0) * config.offsetMultiplier;
         } else {
-          const highPrice = item ? (item.high ?? item.close) : signal.price;
-          signalPrice = highPrice * config.offsetMultiplier;
+          const highPrice = item ? (item.high ?? item.close) : (signal.price ?? 0);
+          signalPrice = (highPrice || 0) * config.offsetMultiplier;
         }
         
         return {
@@ -391,6 +468,11 @@ export function buildCandleOption(params: {
   const xIndexList = xAxes.map((_, idx) => idx);
   const legends: any[] = [];
   const priceLegendData: string[] = [tsCode, ...maList.map(p => `MA${p}`)];
+  if (klineConfig) {
+    priceLegendData.push(`成本线 (¥${klineConfig.avg_cost.toFixed(2)})`);
+    priceLegendData.push(`止盈线 (+${(klineConfig.stop_gain_threshold * 100).toFixed(0)}% ¥${klineConfig.stop_gain_price.toFixed(2)})`);
+    priceLegendData.push(`止损线 (-${(klineConfig.stop_loss_threshold * 100).toFixed(0)}% ¥${klineConfig.stop_loss_price.toFixed(2)})`);
+  }
   if (buys.length > 0) priceLegendData.push('BUY');
   if (sells.length > 0) priceLegendData.push('SELL');
   
@@ -476,42 +558,109 @@ export function buildCandleOption(params: {
           html += `</div>`;
         }
         
-        // Technical indicators (MA lines)
+        // 按业务意义分组显示指标
         if (pLines && pLines.length > 0) {
-          html += `<div style="margin-bottom: 8px;">`;
+          // 1. 趋势指标 (MA均线) - 一行显示
           const maLines = pLines.filter(pl => pl.seriesName.startsWith('MA'));
           if (maLines.length > 0) {
+            html += `<div style="margin-bottom: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">`;
+            html += `<div style="color: #ffa726; font-size: 11px; margin-bottom: 4px;">趋势指标</div>`;
             html += `<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">`;
             maLines.forEach((pl, idx) => {
               const color = maColors[idx % maColors.length];
               if (typeof pl.data === 'number') {
-                html += `<span><span style="color: ${color};">●</span> <span style="color: #ccc;">${pl.seriesName}:</span> <span style="color: ${color}; font-weight: bold;">${formatQuantity(pl.data)}</span></span>`;
+                html += `<span><span style="color: ${color};">●</span> ${pl.seriesName}: <span style="color: ${color}; font-weight: bold;">${formatQuantity(pl.data)}</span></span>`;
+              }
+            });
+            html += `</div></div>`;
+          }
+          
+          // 2. 持仓参考线 (成本线、止盈线、止损线) - 分行显示
+          const positionLines = pLines.filter(pl => 
+            pl.seriesName.includes('成本线') || 
+            pl.seriesName.includes('止盈线') || 
+            pl.seriesName.includes('止损线')
+          );
+          if (positionLines.length > 0) {
+            html += `<div style="margin-bottom: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">`;
+            html += `<div style="color: #10b981; font-size: 11px; margin-bottom: 4px;">持仓参考</div>`;
+            positionLines.forEach(pl => {
+              if (typeof pl.data === 'number') {
+                let lineColor = '#666666';
+                let lineIcon = '━';
+                if (pl.seriesName.includes('止盈')) {
+                  lineColor = '#10b981';
+                  lineIcon = '━';
+                } else if (pl.seriesName.includes('止损')) {
+                  lineColor = '#ef4444';  
+                  lineIcon = '━';
+                }
+                html += `<div style="font-size: 11px; margin-bottom: 2px;"><span style="color: ${lineColor};">${lineIcon}</span> <span style="color: #ccc;">${pl.seriesName}:</span> <span style="color: ${lineColor}; font-weight: bold;">${formatPrice(pl.data)}</span></div>`;
               }
             });
             html += `</div>`;
           }
           
-          // Other technical indicators
-          const otherLines = pLines.filter(pl => !pl.seriesName.startsWith('MA'));
-          if (otherLines.length > 0) {
-            html += `<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">`;
-            otherLines.forEach(pl => {
-              if (typeof pl.data === 'number') {
-                let indicatorColor = '#42a5f5'; // Default blue
-                if (pl.seriesName.includes('DIF')) indicatorColor = '#ef4444';
-                else if (pl.seriesName.includes('DEA')) indicatorColor = '#3b82f6';
-                else if (pl.seriesName.includes('MACD')) indicatorColor = '#10b981';
-                else if (pl.seriesName.includes('K')) indicatorColor = '#22c55e';
-                else if (pl.seriesName.includes('D')) indicatorColor = '#f59e0b';
-                else if (pl.seriesName.includes('J')) indicatorColor = '#ef4444';
-                else if (pl.seriesName.includes('BIAS')) indicatorColor = '#8b5cf6';
-                
-                html += `<span><span style="color: ${indicatorColor};">●</span> <span style="color: #ccc;">${pl.seriesName}:</span> <span style="color: ${indicatorColor}; font-weight: bold;">${formatQuantity(pl.data)}</span></span>`;
-              }
-            });
+          // 3. 技术指标 (MACD, KDJ, BIAS等) - 按类型分行
+          const techLines = pLines.filter(pl => 
+            !pl.seriesName.startsWith('MA') && 
+            !pl.seriesName.includes('成本线') && 
+            !pl.seriesName.includes('止盈线') && 
+            !pl.seriesName.includes('止损线')
+          );
+          if (techLines.length > 0) {
+            html += `<div style="margin-bottom: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">`;
+            html += `<div style="color: #42a5f5; font-size: 11px; margin-bottom: 4px;">技术指标</div>`;
+            
+            // MACD 指标一行
+            const macdLines = techLines.filter(pl => pl.seriesName.includes('DIF') || pl.seriesName.includes('DEA') || pl.seriesName.includes('MACD'));
+            if (macdLines.length > 0) {
+              html += `<div style="font-size: 11px; margin-bottom: 2px;">`;
+              macdLines.forEach((pl, idx) => {
+                if (typeof pl.data === 'number') {
+                  let indicatorColor = '#42a5f5';
+                  if (pl.seriesName.includes('DIF')) indicatorColor = '#ef4444';
+                  else if (pl.seriesName.includes('DEA')) indicatorColor = '#3b82f6';
+                  else if (pl.seriesName.includes('MACD')) indicatorColor = '#10b981';
+                  html += `<span><span style="color: ${indicatorColor};">●</span> ${pl.seriesName}: <span style="color: ${indicatorColor}; font-weight: bold;">${formatQuantity(pl.data)}</span></span>`;
+                  if (idx < macdLines.length - 1) html += `<span style="color: #666; margin: 0 4px;">|</span>`;
+                }
+              });
+              html += `</div>`;
+            }
+            
+            // KDJ 指标一行  
+            const kdjLines = techLines.filter(pl => pl.seriesName.includes('K') || pl.seriesName.includes('D') || pl.seriesName.includes('J'));
+            if (kdjLines.length > 0) {
+              html += `<div style="font-size: 11px; margin-bottom: 2px;">`;
+              kdjLines.forEach((pl, idx) => {
+                if (typeof pl.data === 'number') {
+                  let indicatorColor = '#42a5f5';
+                  if (pl.seriesName.includes('K')) indicatorColor = '#22c55e';
+                  else if (pl.seriesName.includes('D')) indicatorColor = '#f59e0b';
+                  else if (pl.seriesName.includes('J')) indicatorColor = '#ef4444';
+                  html += `<span><span style="color: ${indicatorColor};">●</span> ${pl.seriesName}: <span style="color: ${indicatorColor}; font-weight: bold;">${formatQuantity(pl.data)}</span></span>`;
+                  if (idx < kdjLines.length - 1) html += `<span style="color: #666; margin: 0 4px;">|</span>`;
+                }
+              });
+              html += `</div>`;
+            }
+            
+            // BIAS 指标一行
+            const biasLines = techLines.filter(pl => pl.seriesName.includes('BIAS'));
+            if (biasLines.length > 0) {
+              html += `<div style="font-size: 11px; margin-bottom: 2px;">`;
+              biasLines.forEach((pl, idx) => {
+                if (typeof pl.data === 'number') {
+                  html += `<span><span style="color: #8b5cf6;">●</span> ${pl.seriesName}: <span style="color: #8b5cf6; font-weight: bold;">${formatQuantity(pl.data)}%</span></span>`;
+                  if (idx < biasLines.length - 1) html += `<span style="color: #666; margin: 0 4px;">|</span>`;
+                }
+              });
+              html += `</div>`;
+            }
+            
             html += `</div>`;
           }
-          html += `</div>`;
         }
         
         // Add trading events information

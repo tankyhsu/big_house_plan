@@ -44,11 +44,16 @@ def get_dashboard(date_yyyymmdd: str) -> dict:
     # 当日信号数量来自快照（如果未calc，可能为0）
     from .signal_svc import SignalService
     counts = SignalService.get_signal_counts_by_date(d)
+    
+    # 获取实时持仓状态（新增功能）
+    from .position_status_svc import PositionStatusService
+    position_alerts = PositionStatusService.get_position_alerts_count(date_yyyymmdd)
 
     return {
         "date": d,
         "kpi": {"market_value": mv, "cost": cost, "unrealized_pnl": pnl, "ret": ret},
         "signals": {"stop_gain": counts["stop_gain"], "stop_loss": counts["stop_loss"]},
+        "position_status": position_alerts,  # 新增：实时持仓状态统计
         "price_fallback_used": used_fallback
     }
 
