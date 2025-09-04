@@ -201,7 +201,7 @@ def api_rebuild_historical_signals():
     重建所有历史信号：清除现有自动信号，重新生成完整的历史信号
     用于信号管理和初始化
     """
-    from .services.calc_svc import rebuild_all_historical_signals
+    from .services.signal_svc import rebuild_all_historical_signals
     result = rebuild_all_historical_signals()
     return {"message": "历史信号重建完成", "generated_signals": result["count"], "date_range": result["date_range"]}
 
@@ -211,7 +211,7 @@ def api_signal_create(signal: SignalCreate):
     手动创建信号：支持添加自定义信号（如利空/利好等政策面信号）。
     支持多种范围类型：单个标的/类别、多个标的/类别、所有标的/类别。
     """
-    from .services.dashboard_svc import create_manual_signal_extended
+    from .services.signal_svc import create_manual_signal_extended
     result = create_manual_signal_extended(
         trade_date=signal.trade_date,
         ts_code=signal.ts_code,  # 兼容性
