@@ -212,7 +212,7 @@ class SignalGenerationService:
                 
                 # 检查止盈条件
                 if ret >= stop_gain:
-                    signal_id = signal_repo.insert_signal_if_not_exists(
+                    signal_id = signal_repo.insert_signal_if_no_recent_stop(
                         conn, trade_date, ts_code, "HIGH", "STOP_GAIN",
                         f"{ts_code} 收益率 {ret:.2%} 达到止盈目标 {stop_gain:.0%}"
                     )
@@ -226,7 +226,7 @@ class SignalGenerationService:
                     
                 # 检查止损条件
                 elif ret <= -stop_loss:
-                    signal_id = signal_repo.insert_signal_if_not_exists(
+                    signal_id = signal_repo.insert_signal_if_no_recent_stop(
                         conn, trade_date, ts_code, "HIGH", "STOP_LOSS",
                         f"{ts_code} 收益率 {ret:.2%} 触发止损阈值 -{stop_loss:.0%}"
                     )
@@ -325,14 +325,14 @@ class SignalGenerationService:
                 
                 # 检查止盈条件
                 if ret >= stop_gain:
-                    signal_repo.insert_signal_if_not_exists(
+                    signal_repo.insert_signal_if_no_recent_stop(
                         conn, current_date, ts_code, "HIGH", "STOP_GAIN",
                         f"{ts_code} 收益率 {ret:.2%} 达到止盈目标 {stop_gain:.0%}"
                     )
                     
                 # 检查止损条件
                 elif ret <= -stop_loss:
-                    signal_repo.insert_signal_if_not_exists(
+                    signal_repo.insert_signal_if_no_recent_stop(
                         conn, current_date, ts_code, "HIGH", "STOP_LOSS",
                         f"{ts_code} 收益率 {ret:.2%} 触发止损阈值 -{stop_loss:.0%}"
                     )

@@ -11,8 +11,8 @@ cd "$ROOT_DIR"
 echo "==> [backend] 安装依赖（如已安装会跳过）"
 python3 -m venv .venv >/dev/null 2>&1 || true
 source .venv/bin/activate
-python -m pip install -U pip >/dev/null
-python -m pip install -r requirements.txt
+python3 -m pip install -U pip >/dev/null
+python3 -m pip install -r requirements.txt
 
 if [ ! -f "config.yaml" ]; then
   cat > config.yaml <<'YAML'

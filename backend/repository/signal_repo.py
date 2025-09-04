@@ -271,6 +271,71 @@ def insert_signal_if_not_exists(conn: Connection, trade_date: str, ts_code: str,
     
     return None
 
+def has_recent_stop_signal(conn: Connection, ts_code: str, check_date: str, days_back: int = 30) -> bool:
+    """
+    检查指定标的在过去一段时间内是否已有止盈或止损信号
+    
+    Args:
+        conn: 数据库连接
+        ts_code: 标的代码
+        check_date: 检查日期 YYYY-MM-DD
+        days_back: 往前检查的天数，默认30天
+    
+    Returns:
+        True如果已有止盈/止损信号，False如果没有
+    """
+    from datetime import datetime, timedelta
+    
+    check_dt = datetime.strptime(check_date, "%Y-%m-%d")
+    start_date = (check_dt - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    
+    existing = conn.execute("""
+        SELECT id FROM signal 
+        WHERE ts_code = ? 
+        AND trade_date >= ? 
+        AND trade_date <= ? 
+        AND type IN ('STOP_GAIN', 'STOP_LOSS')
+        LIMIT 1
+    """, (ts_code, start_date, check_date)).fetchone()
+    
+    return existing is not None
+
+
+def insert_signal_if_no_recent_stop(conn: Connection, trade_date: str, ts_code: str,
+                                   level: str, signal_type: str, message: str, 
+                                   days_back: int = 30) -> Optional[int]:
+    """
+    如果过去一段时间内没有止盈/止损信号则插入信号记录
+    
+    Args:
+        conn: 数据库连接
+        trade_date: 交易日期 YYYY-MM-DD
+        ts_code: 标的代码
+        level: 信号级别
+        signal_type: 信号类型
+        message: 信号消息
+        days_back: 往前检查的天数，默认30天
+    
+    Returns:
+        创建的信号ID，如果已存在或不应创建则返回None
+    """
+    # 对于止盈/止损信号，检查过去一段时间内是否已有相同类型的信号
+    if signal_type in ('STOP_GAIN', 'STOP_LOSS'):
+        if has_recent_stop_signal(conn, ts_code, trade_date, days_back):
+            return None
+    
+    # 检查当天是否已有相同信号（保持原有逻辑）
+    existing = conn.execute(
+        "SELECT id FROM signal WHERE trade_date=? AND ts_code=? AND type=?",
+        (trade_date, ts_code, signal_type)
+    ).fetchone()
+    
+    if not existing:
+        return insert_signal(conn, trade_date, ts_code=ts_code, level=level, 
+                           signal_type=signal_type, message=message)
+    
+    return None
+
 
 def delete_signals_by_type(conn: Connection, signal_types: List[str]) -> int:
     """

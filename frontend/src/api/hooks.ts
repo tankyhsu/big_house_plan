@@ -196,3 +196,47 @@ export async function fetchOhlcRange(ts_code: string, startYmd: string, endYmd: 
   const { data } = await client.get("/api/price/ohlc", { params: { ts_code, start: startYmd, end: endYmd, nocache: Date.now() } });
   return (data?.items || []) as OhlcItem[];
 }
+
+// 数据备份和恢复
+export async function downloadBackup(): Promise<void> {
+  const response = await client.post("/api/backup", {}, { 
+    responseType: "blob",
+    headers: {
+      'Accept': 'application/json'
+    }
+  });
+  
+  // 创建下载链接
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  
+  // 从响应头获取文件名，如果没有则使用默认文件名
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = 'portfolio_backup.json';
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+    if (filenameMatch) {
+      filename = filenameMatch[1].replace(/"/g, '');
+    }
+  }
+  
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function uploadRestore(file: File): Promise<{ message: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const { data } = await client.post("/api/restore", formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  
+  return data;
+}

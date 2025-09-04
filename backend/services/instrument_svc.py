@@ -89,7 +89,7 @@ def seed_load(categories_csv: str, instruments_csv: str, log: LogContext) -> dic
     return {"created_category": created_cat, "created_instrument": created_ins}
 
 
-def get_instrument_detail(ts_code: str) -> dict | None:
+def get_instrument_detail(ts_code: str) -> Optional[dict]:
     with get_conn() as conn:
         row = instrument_repo.get_one(conn, ts_code)
         return dict(row) if row else None
