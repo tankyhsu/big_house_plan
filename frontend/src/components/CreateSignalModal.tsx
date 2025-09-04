@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal, Form, Input, Select, DatePicker, message, AutoComplete } from "antd";
+import { Modal, Form, Input, Select, DatePicker, message } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { createSignal, fetchInstruments, fetchCategories, type SignalCreatePayload } from "../api/hooks";
 import type { InstrumentLite, CategoryLite, SignalLevel, SignalType, SignalScopeType } from "../api/types";

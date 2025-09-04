@@ -62,7 +62,6 @@ export default function PositionEditor() {
         const oneMonthAgo = dayjs().subtract(1, "month").format("YYYY-MM-DD");
         const today = dayjs().format("YYYY-MM-DD");
         const signalData = await fetchAllSignals(undefined, undefined, oneMonthAgo, today, 200);
-        console.log('📊 PositionEditor loaded signals:', signalData?.length || 0, 'signals');
         setSignals(signalData || []);
       } catch (error) {
         console.error("Failed to load signals:", error);

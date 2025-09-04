@@ -99,7 +99,6 @@ export default function InstrumentDetail() {
           fetchAllSignals(undefined, ts_code, sixMonthsAgo, today, 100) // K线图用（六个月，限制100条）
         ]);
         
-        console.log('🔍 Loaded signals for', ts_code, '- Header:', headerSignalData?.length || 0, 'Chart:', chartSignalData?.length || 0);
         setHeaderSignals(headerSignalData || []);
         setChartSignals(chartSignalData || []);
       } catch (error) {
@@ -203,8 +202,8 @@ export default function InstrumentDetail() {
                 const c = lastPrice.close;
                 const p = lastPrice.prevClose;
                 if (typeof c !== 'number') return <span style={{ color: '#98A2B3' }}>—</span>;
-                let diff = (p && p > 0) ? (c - p) : 0;
-                let pct = (p && p > 0) ? (diff / p) * 100 : 0;
+                const diff = (p && p > 0) ? (c - p) : 0;
+                const pct = (p && p > 0) ? (diff / p) * 100 : 0;
                 const isUp = diff > 0;
                 const isDown = diff < 0;
                 const color = isUp ? '#f04438' : (isDown ? '#12b76a' : '#667085');

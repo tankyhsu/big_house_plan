@@ -215,7 +215,30 @@ def _generate_historical_signals_for_instrument(conn, ts_code, avg_cost, opening
     return signal_count, None
 
 def calc(date_yyyymmdd: str, log: LogContext):
-    print("触发计算逻辑")
+    """
+    执行指定日期的投资组合计算和信号生成
+    
+    主要功能：
+    1. 清除当日已有的投资组合数据，避免重复计算
+    2. 计算各标的的市值、成本、未实现盈亏和收益率
+    3. 按类别汇总投资组合数据，判断是否超配或缺配
+    4. 生成止盈止损信号（避免重复生成已存在的信号）
+    
+    Args:
+        date_yyyymmdd: 计算日期，格式 YYYYMMDD
+        log: 日志上下文对象，用于记录计算过程
+        
+    配置参数说明：
+        unit_amount: 单位投资金额，用于计算理论份数
+        overweight_band: 超配阈值带，判断是否需要再平衡  
+        stop_gain_pct: 止盈阈值百分比
+        stop_loss_pct: 止损阈值百分比
+        
+    业务逻辑：
+        - 使用收盘价计算市值，如无收盘价则使用成本价
+        - 超配/缺配判断基于实际份数与理论份数的差异
+        - 止盈止损信号基于未实现收益率阈值
+    """
     d = yyyyMMdd_to_dash(date_yyyymmdd)
     cfg = get_config()
     unit_amount = float(cfg.get("unit_amount", 3000))

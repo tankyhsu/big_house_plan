@@ -19,6 +19,10 @@ export default function Dashboard() {
   const [dash, setDash] = useState<any>(null);
   const [monthlySignals, setMonthlySignals] = useState<SignalRow[]>([]);
 
+  /**
+   * 加载仪表板所有数据
+   * 包括：仪表板汇总、类别数据、持仓数据、近一个月信号
+   */
   const loadAll = async () => {
     setLoading(true);
     try {
@@ -52,6 +56,10 @@ export default function Dashboard() {
 
   useEffect(()=>{ loadAll(); }, [ymd]);
 
+  /**
+   * 重新计算指定日期的投资组合快照
+   * 包括持仓计算、类别汇总、信号生成等
+   */
   const onCalc = async () => {
     try {
       await postCalc(ymd);
@@ -60,6 +68,10 @@ export default function Dashboard() {
     } catch (e:any) { message.error(e.message); }
   };
 
+  /**
+   * 同步价格数据
+   * 从 TuShare API 获取最新的EOD价格数据
+   */
   const onSync = async () => {
     try {
       const res = await postSyncPrices(ymd);

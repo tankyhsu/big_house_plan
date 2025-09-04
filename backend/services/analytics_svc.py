@@ -8,14 +8,13 @@ from ..db import get_conn
 from ..repository import txn_repo, position_repo, price_repo
 from .utils import yyyyMMdd_to_dash
 
-# analytics_svc.py 头部
-import time, traceback
+# analytics_svc.py 头部  
 from datetime import datetime, date as dt_date
 from math import isfinite
 
 def _alog(msg: str):
-    # 统一前缀，便于在控制台检索
-    print(f"[analytics][xirr] {msg}")
+    # Debug logging disabled for production
+    pass
 
 def _xirr(cashflows: List[Tuple[str, float]]) -> Optional[float]:
     # 规范日期并过滤非法记录（容错：YYYY-MM-DD / YYYYMMDD）
@@ -30,7 +29,7 @@ def _xirr(cashflows: List[Tuple[str, float]]) -> Optional[float]:
             return None
 
     if not cashflows:
-        _alog("xirr: empty cashflows"); return None
+        return None
 
     norm: List[Tuple[str, float]] = []
     for d, a in cashflows:
@@ -39,13 +38,11 @@ def _xirr(cashflows: List[Tuple[str, float]]) -> Optional[float]:
             norm.append((dd, float(a)))
 
     if len(norm) < 2:
-        _alog(f"xirr: insufficient flows after normalize -> {len(norm)}")
         return None
 
     try:
         dates = [datetime.strptime(d, "%Y-%m-%d").date() for d, _ in norm]
-    except Exception as e:
-        _alog(f"xirr: date parse failed: {e}")
+    except Exception:
         return None
 
     t_end: dt_date = max(dates)
@@ -57,20 +54,19 @@ def _xirr(cashflows: List[Tuple[str, float]]) -> Optional[float]:
         try:
             f = sum(a * (1 + r) ** t for a, t in zip(amounts, days))
             df = sum(a * t * (1 + r) ** (t - 1) for a, t in zip(amounts, days))
-        except Exception as e:
-            _alog(f"xirr: pow failed {e}")
+        except Exception:
             return None
         if abs(df) < 1e-12:
             break
         r_new = r - f / df
         if not isfinite(r_new):
-            _alog("xirr: non-finite r_new"); return None
+            return None
         if r_new < -0.999999:
             r_new = -0.999999
         if abs(r_new - r) < 1e-8:
             return r_new
         r = r_new
-    _alog("xirr: not converged")
+    # Algorithm did not converge
     return None
 
 def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> Tuple[List[Tuple[str, float]], Optional[str], Optional[float]]:
@@ -80,7 +76,6 @@ def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> Tuple[List[Tuple[st
 
     with get_conn() as conn:
         txns = txn_repo.list_txns_for_code_upto(conn, ts_code, date_dash)
-        _alog(f"build_cfs: ts={ts_code} date={date_dash} txns={len(txns)}")
 
         for t in txns:
             action = (t["action"] or "").upper()
@@ -112,24 +107,23 @@ def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> Tuple[List[Tuple[st
                 used_price_date, price = last[0], last[1]
                 terminal_value = shares_now * float(price)
                 cfs.append((date_dash, terminal_value))
-        _alog(f"build_cfs: ts={ts_code} flows={len(cfs)} shares_now={shares_now} used_price_date={used_price_date} term={terminal_value}")
+        # Build cashflows completed
     return cfs, used_price_date, terminal_value
 
 
 def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
     d = yyyyMMdd_to_dash(date_yyyymmdd)
-    t0 = time.time()
-    _alog(f"compute_one: ts={ts_code} date={d} start")
+    # Compute XIRR for single position
     cfs, used_price_date, terminal_value = _build_cashflows_for_ts(ts_code, d)
     first_d = cfs[0][0] if cfs else None
     last_d  = cfs[-1][0] if cfs else None
-    _alog(f"compute_one: ts={ts_code} flows={len(cfs)} first={first_d} last={last_d} used_price={used_price_date}")
+    # Cashflow analysis completed
 
     # --- 正常路径：有≥2笔现金流，走 XIRR ---
     if len(cfs) >= 2:
         try:
             r = _xirr(cfs)
-            _alog(f"compute_one: ts={ts_code} r={r} elapsed_ms={int((time.time()-t0)*1000)}")
+            # XIRR computation completed
             return {
                 "ts_code": ts_code,
                 "date": d,
@@ -139,9 +133,8 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
                 "terminal_value": terminal_value,
                 "irr_reason": "ok" if r is not None else "no_solution"
             }
-        except Exception as e:
-            _alog(f"compute_one: ts={ts_code} EX {e}")
-            traceback.print_exc()
+        except Exception:
+            # XIRR computation failed
             raise
 
     # --- Fallback 路径：无流水/不足两笔，用 建仓→估值 推算年化 ---
@@ -154,7 +147,7 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
                 (ts_code,)
             ).fetchone()
             if not prow:
-                _alog(f"compute_one: ts={ts_code} no position row for fallback")
+                # No position data for fallback calculation
                 return {
                     "ts_code": ts_code, "date": d,
                     "annualized_mwr": None, "flows": len(cfs),
@@ -168,8 +161,7 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
             avg_cost = float(prow["avg_cost"] or 0.0)
 
             if not opening_date or shares_now <= 0 or avg_cost <= 0:
-                _alog(f"compute_one: ts={ts_code} fallback blocked "
-                      f"opening_date={opening_date_raw} shares={shares_now} avg_cost={avg_cost}")
+                # Fallback calculation blocked - insufficient data
                 return {
                     "ts_code": ts_code, "date": d,
                     "annualized_mwr": None, "flows": len(cfs),
@@ -183,7 +175,7 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
                 (ts_code, d)
             ).fetchone()
             if not pe or pe["close"] is None:
-                _alog(f"compute_one: ts={ts_code} fallback no price_eod <= {d}")
+                # No price data available for fallback calculation
                 return {
                     "ts_code": ts_code, "date": d,
                     "annualized_mwr": None, "flows": len(cfs),
@@ -200,7 +192,7 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
             vd = _dt.strptime(d, "%Y-%m-%d").date()
             holding_days = (vd - od).days
             if holding_days <= 0:
-                _alog(f"compute_one: ts={ts_code} fallback holding_days<=0 ({holding_days})")
+                # Invalid holding period for fallback calculation
                 return {
                     "ts_code": ts_code, "date": d,
                     "annualized_mwr": None, "flows": len(cfs),
@@ -211,8 +203,7 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
             total_return = (price / avg_cost) - 1.0
             annualized = (1.0 + total_return) ** (365.0 / holding_days) - 1.0
 
-            _alog(f"compute_one: ts={ts_code} fallback annualized={annualized} "
-                  f"total_return={total_return} days={holding_days} used_price={used_price_date}")
+            # Fallback calculation completed successfully
             return {
                 "ts_code": ts_code,
                 "date": d,
@@ -223,9 +214,8 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
                 "irr_reason": "fallback_opening_date"
             }
 
-    except Exception as e:
-        _alog(f"compute_one: ts={ts_code} fallback EX {e}")
-        traceback.print_exc()
+    except Exception:
+        # Fallback calculation failed
         # 保底返回
         return {
             "ts_code": ts_code, "date": d,
@@ -261,7 +251,7 @@ def compute_position_xirr_batch(date_yyyymmdd: str, ts_codes: Optional[List[str]
                 if t == "CASH" or r["ts_code"].upper() == cash_code_cfg:
                     cash_set.add(r["ts_code"])
 
-    _alog(f"compute_batch: date={d} codes={len(codes)} skip_cash={len(cash_set)}")
+    # Batch XIRR computation starting
     out: List[Dict] = []
     for code in codes:
         if code in cash_set:
@@ -276,11 +266,10 @@ def compute_position_xirr_batch(date_yyyymmdd: str, ts_codes: Optional[List[str]
         try:
             out.append(compute_position_xirr(code, date_yyyymmdd))
         except Exception as e:
-            _alog(f"compute_batch: ts={code} ERROR {e}")
-            traceback.print_exc()
+            # Individual position computation failed
             # 不中断：保留一条错误占位，前端不会用到 annualized_mwr 的 null 以外字段
             out.append({"ts_code": code, "date": d, "annualized_mwr": None, "flows": 0, "error": str(e)})
-    _alog(f"compute_batch: done ok={len(out)}")
+    # Batch computation completed
     return out
 
 def _to_dash_date(s: Optional[str]) -> Optional[str]:

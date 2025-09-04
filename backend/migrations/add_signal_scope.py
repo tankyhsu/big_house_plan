@@ -4,8 +4,6 @@ Migration: Add scope_type and scope_data to signal table for extended scope supp
 """
 
 import sqlite3
-import json
-from pathlib import Path
 
 def migrate_signal_scope(db_path: str):
     """Add scope_type and scope_data columns to signal table"""
@@ -19,15 +17,12 @@ def migrate_signal_scope(db_path: str):
         columns = [row[1] for row in cursor.fetchall()]
         
         if 'scope_type' not in columns:
-            print("Adding scope_type column...")
             conn.execute("ALTER TABLE signal ADD COLUMN scope_type TEXT DEFAULT 'INSTRUMENT'")
             
         if 'scope_data' not in columns:
-            print("Adding scope_data column...")
             conn.execute("ALTER TABLE signal ADD COLUMN scope_data TEXT")
             
         # Migrate existing data
-        print("Migrating existing signal data...")
         
         # Update scope_type based on existing data
         conn.execute("""
@@ -54,7 +49,7 @@ def migrate_signal_scope(db_path: str):
         """)
         
         conn.commit()
-        print("Signal scope migration completed successfully!")
+        print("Migration completed successfully")
         
     except Exception as e:
         conn.rollback()

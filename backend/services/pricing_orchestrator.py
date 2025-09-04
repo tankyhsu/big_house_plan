@@ -30,7 +30,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
 
     if not all_targets:
         info = {"date": trade_date, "found": 0, "updated": 0, "skipped": 0, "reason": "no_active_codes"}
-        log.set_after(info); log.write("DEBUG", "[orchestrator] no_active_codes")
+        log.set_after(info)
         return info
 
     stock_like: List[str] = []
@@ -66,9 +66,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                 fund_like = [c for c in fund_like if c not in have]
                 after_counts = (len(stock_like), len(etf_like), len(fund_like))
                 total_skipped += (before_counts[0] - after_counts[0]) + (before_counts[1] - after_counts[1]) + (before_counts[2] - after_counts[2])
-                if skipped_codes:
-                    sample = ", ".join(skipped_codes[:8])
-                    print(f"[orchestrator] {trade_date} skip existing: {len(skipped_codes)} codes (e.g. {sample})")
+                # Skip printing existing codes debug info
 
     # STOCK: use daily with trade_cal fallback
     if stock_like:
@@ -190,5 +188,5 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
         "skipped": int(total_skipped),
         "used_dates_uniq": sorted(list(set(used_dates.values()))) if used_dates else []
     }
-    log.set_after(result); log.write("DEBUG", "[orchestrator] done")
+    log.set_after(result)
     return result

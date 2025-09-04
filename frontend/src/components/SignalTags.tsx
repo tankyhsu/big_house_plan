@@ -28,7 +28,6 @@ const getRelativeTimeText = (tradeDate: string): string => {
 };
 
 export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps) {
-  console.log('🏷️ SignalTags render:', signals?.length || 0, 'signals:', signals);
   if (!signals || signals.length === 0) return null;
 
   const displaySignals = signals.slice(0, maxDisplay);
