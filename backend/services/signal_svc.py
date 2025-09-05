@@ -295,49 +295,19 @@ class SignalGenerationService:
             return {"count": signal_count, "date_range": date_range}
 
     @staticmethod
-    def generate_current_signals(positions_df, stop_gain: float, stop_loss: float):
+    def generate_current_signals(positions_df, trade_date: str = None):
         """
         为当前持仓生成信号（用于日常计算）
         
+        注意：止盈止损功能已从此处移除，不再自动生成止盈止损信号
+        
         Args:
             positions_df: 持仓数据DataFrame
-            stop_gain: 止盈比例
-            stop_loss: 止损比例
+            trade_date: 交易日期 (YYYY-MM-DD格式)，如果不提供则使用当前日期
         """
-        with get_conn() as conn:
-            for _, position in positions_df.iterrows():
-                if position["cost"] <= 0 or not position["ts_code"]:
-                    continue
-                
-                ts_code = position["ts_code"]
-                avg_cost = float(position["avg_cost"])
-                current_price = position.get("close")
-                
-                if not current_price:
-                    continue
-                
-                # 计算收益率
-                ret = (current_price - avg_cost) / avg_cost
-                
-                # 获取当前交易日期
-                from datetime import datetime
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                
-                # 检查止盈条件
-                if ret >= stop_gain:
-                    signal_repo.insert_signal_if_no_recent_stop(
-                        conn, current_date, ts_code, "HIGH", "STOP_GAIN",
-                        f"{ts_code} 收益率 {ret:.2%} 达到止盈目标 {stop_gain:.0%}"
-                    )
-                    
-                # 检查止损条件
-                elif ret <= -stop_loss:
-                    signal_repo.insert_signal_if_no_recent_stop(
-                        conn, current_date, ts_code, "HIGH", "STOP_LOSS",
-                        f"{ts_code} 收益率 {ret:.2%} 触发止损阈值 -{stop_loss:.0%}"
-                    )
-            
-            conn.commit()
+        # 此方法现在为空实现，不再生成任何自动信号
+        # 如果将来需要其他类型的自动信号生成，可以在这里添加
+        pass
 
 
 # 向后兼容的函数别名

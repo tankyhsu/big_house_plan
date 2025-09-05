@@ -38,8 +38,6 @@ export type PositionRow = {
 };
 
 export type SignalType = 
-  | "STOP_GAIN"      // 止盈信号
-  | "STOP_LOSS"      // 止损信号  
   | "UNDERWEIGHT"    // 低配信号
   | "BUY_SIGNAL"     // 买入信号
   | "SELL_SIGNAL"    // 卖出信号
@@ -160,7 +158,7 @@ export type PositionStatus = {
   avg_cost: number;
   current_price: number;
   return_rate: number;
-  status: "STOP_GAIN" | "STOP_LOSS" | "NORMAL";
+  status: "NORMAL";
   stop_gain_threshold: number;
   stop_loss_threshold: number;
   message: string;

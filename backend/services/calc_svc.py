@@ -111,7 +111,7 @@ def calc(date_yyyymmdd: str, log: LogContext):
                 int(r["overweight"]),
             )
 
-        # 使用新的信号生成服务生成当前信号
+        # 使用新的信号生成服务生成当前信号（止盈止损功能已移除）
         from .signal_svc import SignalGenerationService
-        SignalGenerationService.generate_current_signals(df, stop_gain, stop_loss)
+        SignalGenerationService.generate_current_signals(df, d)
     log.set_payload({"date": date_yyyymmdd})

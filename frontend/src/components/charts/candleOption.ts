@@ -41,10 +41,8 @@ export function buildCandleOption(params: {
   const downColor = "#12b76a"; // 绿跌
   const volumes = mapVolumes(items as any, upColor, downColor);
 
-  // 过滤掉止盈止损信号，因为我们要用阈值线替代时间点信号
-  const filteredSignals = signals.filter(signal => 
-    signal.type !== 'STOP_GAIN' && signal.type !== 'STOP_LOSS'
-  );
+  // 不再需要过滤止盈止损信号，因为已经从信号系统中移除
+  const filteredSignals = signals;
   
   // Process signals early to use in series
   // console.log('📊 Building candle chart with signals:', filteredSignals);
@@ -108,8 +106,6 @@ export function buildCandleOption(params: {
     position: 'top' | 'bottom';
     offsetMultiplier: number;
   }> = {
-    'STOP_GAIN': { symbol: 'pin', color: '#f04438', emoji: '🔥', name: '止盈', position: 'top', offsetMultiplier: 1.02 },
-    'STOP_LOSS': { symbol: 'pin', color: '#ff6b35', emoji: '⚠️', name: '止损', position: 'bottom', offsetMultiplier: 0.98 },
     'UNDERWEIGHT': { symbol: 'circle', color: '#3b82f6', emoji: '📊', name: '低配', position: 'top', offsetMultiplier: 1.01 },
     'BUY_SIGNAL': { symbol: 'triangle', color: '#10b981', emoji: '📈', name: '买入', position: 'top', offsetMultiplier: 1.015 },
     'SELL_SIGNAL': { symbol: 'triangle', color: '#ef4444', emoji: '📉', name: '卖出', position: 'top', offsetMultiplier: 1.015 },
@@ -410,8 +406,8 @@ export function buildCandleOption(params: {
         };
       }),
       symbol: config.symbol,
-      symbolSize: signalType === 'STOP_GAIN' || signalType === 'STOP_LOSS' ? 16 : 12,
-      symbolRotate: signalType === 'STOP_GAIN' ? 180 : (signalType === 'SELL_SIGNAL' ? 180 : 0),
+      symbolSize: 12,
+      symbolRotate: (signalType === 'SELL_SIGNAL' ? 180 : 0),
       itemStyle: {
         color: config.color,
         borderColor: '#fff',

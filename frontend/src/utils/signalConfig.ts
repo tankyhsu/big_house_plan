@@ -2,8 +2,6 @@ import type { SignalType, SignalLevel } from "../api/types";
 
 // 信号类型配置
 export const SIGNAL_CONFIG: Record<SignalType, { label: string; color: string; description: string }> = {
-  STOP_GAIN: { label: "止盈", color: "red", description: "达到止盈目标" },
-  STOP_LOSS: { label: "止损", color: "volcano", description: "触发止损条件" },
   UNDERWEIGHT: { label: "低配", color: "blue", description: "类别配置低于目标范围" },
   BUY_SIGNAL: { label: "买入", color: "green", description: "买入信号" },
   SELL_SIGNAL: { label: "卖出", color: "red", description: "卖出信号" },

@@ -10,8 +10,6 @@ export interface SignalConfig {
 
 // 信号类型颜色配置，与 candleOption.ts 保持一致
 export const SIGNAL_CONFIGS: Record<string, SignalConfig> = {
-  'STOP_GAIN': { color: '#f04438', emoji: '🔥', name: '止盈', symbol: 'pin', position: 'top', offsetMultiplier: 1.02 },
-  'STOP_LOSS': { color: '#ff6b35', emoji: '⚠️', name: '止损', symbol: 'pin', position: 'bottom', offsetMultiplier: 0.98 },
   'UNDERWEIGHT': { color: '#3b82f6', emoji: '📊', name: '低配', symbol: 'circle', position: 'top', offsetMultiplier: 1.01 },
   'BUY_SIGNAL': { color: '#10b981', emoji: '📈', name: '买入', symbol: 'triangle', position: 'top', offsetMultiplier: 1.015 },
   'SELL_SIGNAL': { color: '#ef4444', emoji: '📉', name: '卖出', symbol: 'triangle', position: 'top', offsetMultiplier: 1.015 },
@@ -39,8 +37,6 @@ export function getSignalConfig(signalType: string): SignalConfig {
 // 获取信号优先级（用于多信号排序）
 export function getSignalPriority(signalType: string): number {
   const priorityOrder: Record<string, number> = {
-    'STOP_GAIN': 5, 
-    'STOP_LOSS': 5,
     'RISK_ALERT': 4, 
     'MARKET_ALERT': 4,
     'SELL_SIGNAL': 3, 

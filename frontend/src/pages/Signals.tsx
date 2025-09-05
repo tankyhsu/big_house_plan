@@ -64,8 +64,6 @@ export default function SignalsPage() {
   // 信号统计
   const signalStats = useMemo(() => {
     const stats: Record<SignalType, number> = {
-      STOP_GAIN: 0,
-      STOP_LOSS: 0,
       UNDERWEIGHT: 0,
       BUY_SIGNAL: 0,
       SELL_SIGNAL: 0,
@@ -255,15 +253,6 @@ export default function SignalsPage() {
               title="高优先级"
               value={signalStats.levelStats.HIGH}
               valueStyle={{ color: "#ff4d4f" }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="止盈信号"
-              value={signalStats.typeStats.STOP_GAIN}
-              valueStyle={{ color: "#52c41a" }}
             />
           </Card>
         </Col>

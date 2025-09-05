@@ -294,17 +294,15 @@ class TestCalcSignalIntegration:
         
         # 验证调用参数
         call_args = mock_generate_signals.call_args
-        assert len(call_args[0]) == 3  # df, stop_gain, stop_loss
+        assert len(call_args[0]) == 2  # df, trade_date
         
         # 验证DataFrame参数
         df = call_args[0][0]
         assert isinstance(df, pd.DataFrame)
         
-        # 验证止盈止损参数
-        stop_gain = call_args[0][1]
-        stop_loss = call_args[0][2]
-        assert isinstance(stop_gain, float)
-        assert isinstance(stop_loss, float)
+        # 验证日期参数
+        trade_date = call_args[0][1]
+        assert trade_date == "2024-01-02"
     
     def test_calc_clears_existing_data(self):
         """测试calc函数正确清除当日已有数据"""
