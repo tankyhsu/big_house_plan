@@ -207,6 +207,28 @@ def api_rebuild_historical_signals():
     result = rebuild_all_historical_signals()
     return {"message": "历史信号重建完成", "generated_signals": result["count"], "date_range": result["date_range"]}
 
+@app.post("/api/signal/rebuild-structure")
+def api_rebuild_structure_signals():
+    """
+    重建结构信号：清除现有结构信号，重新生成完整的历史结构信号
+    用于结构信号管理和初始化
+    """
+    from .services.signal_svc import SignalGenerationService
+    from datetime import datetime, timedelta
+    
+    # 重建最近30天的结构信号
+    end_date = datetime.now().strftime('%Y-%m-%d')
+    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    
+    result = SignalGenerationService.rebuild_structure_signals_for_period(start_date, end_date)
+    return {
+        "message": "结构信号重建完成", 
+        "generated_signals": result["total_signals"], 
+        "processed_dates": result["processed_dates"],
+        "date_range": result["date_range"]
+    }
+
+
 @app.post("/api/signal/create")
 def api_signal_create(signal: SignalCreate):
     """
@@ -709,8 +731,27 @@ def api_calc(body: DateBody = Body(default=DateBody())):
         log.write("ERROR", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-class DateBody(BaseModel):
-    date: Optional[str] = None  # YYYYMMDD；不传则用今天
+@app.post("/api/signal/generate-structure")  
+def api_generate_structure_signals(body: DateBody = Body(default=DateBody())):
+    """
+    为指定日期生成结构信号（买入/卖出结构）
+    用于日常结构信号生成
+    """
+    from .services.signal_svc import TdxStructureSignalGenerator
+    from datetime import datetime
+    
+    date = body.date or datetime.now().strftime("%Y%m%d")
+    # 转换为YYYY-MM-DD格式
+    formatted_date = f"{date[0:4]}-{date[4:6]}-{date[6:8]}"
+    
+    signal_count, signal_instruments = TdxStructureSignalGenerator.generate_structure_signals_for_date(formatted_date)
+    
+    return {
+        "message": "结构信号生成完成",
+        "date": formatted_date, 
+        "generated_signals": signal_count,
+        "signal_instruments": signal_instruments
+    }
 
 class SyncBody(BaseModel):
     date: Optional[str] = None      # YYYYMMDD；不传则今天

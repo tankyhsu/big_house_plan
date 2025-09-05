@@ -5,10 +5,10 @@ import dayjs, { Dayjs } from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 
 dayjs.extend(relativeTime);
-import { fetchAllSignals } from "../api/hooks";
+import { fetchAllSignals, generateStructureSignals, rebuildStructureSignals } from "../api/hooks";
 import client from "../api/client";
 import type { SignalRow, SignalType, SignalLevel } from "../api/types";
-import { ReloadOutlined, AlertOutlined, PlusOutlined, HistoryOutlined } from "@ant-design/icons";
+import { ReloadOutlined, AlertOutlined, PlusOutlined, HistoryOutlined, FunctionOutlined } from "@ant-design/icons";
 import { SIGNAL_CONFIG, LEVEL_CONFIG } from "../utils/signalConfig";
 import CreateSignalModal from "../components/CreateSignalModal";
 import InstrumentDisplay from "../components/InstrumentDisplay";
@@ -24,6 +24,8 @@ export default function SignalsPage() {
   });
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
+  const [structureLoading, setStructureLoading] = useState(false);
+  const [rebuildStructureLoading, setRebuildStructureLoading] = useState(false);
 
   const loadSignals = async () => {
     setLoading(true);
@@ -57,6 +59,33 @@ export default function SignalsPage() {
     }
   };
 
+  const handleGenerateStructureSignals = async () => {
+    setStructureLoading(true);
+    try {
+      const today = dayjs().format("YYYY-MM-DD");
+      const response = await generateStructureSignals(today);
+      message.success(`结构信号生成完成：${response.message}`);
+      await loadSignals(); // 重新加载信号列表
+    } catch (error: any) {
+      message.error(error?.message || "生成结构信号失败");
+    } finally {
+      setStructureLoading(false);
+    }
+  };
+
+  const handleRebuildStructureSignals = async () => {
+    setRebuildStructureLoading(true);
+    try {
+      const response = await rebuildStructureSignals();
+      message.success(`结构信号重建完成：${response.message}`);
+      await loadSignals(); // 重新加载信号列表
+    } catch (error: any) {
+      message.error(error?.message || "重建结构信号失败");
+    } finally {
+      setRebuildStructureLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSignals();
   }, [selectedType, dateRange]);
@@ -67,6 +96,8 @@ export default function SignalsPage() {
       UNDERWEIGHT: 0,
       BUY_SIGNAL: 0,
       SELL_SIGNAL: 0,
+      BUY_STRUCTURE: 0,
+      SELL_STRUCTURE: 0,
       REBALANCE: 0,
       RISK_ALERT: 0,
       MOMENTUM: 0,
@@ -233,6 +264,22 @@ export default function SignalsPage() {
           >
             重建历史信号
           </Button>
+          <Button 
+            icon={<FunctionOutlined />}
+            loading={structureLoading}
+            onClick={handleGenerateStructureSignals}
+            title="为今日生成结构信号"
+          >
+            生成结构信号
+          </Button>
+          <Button 
+            icon={<HistoryOutlined />}
+            loading={rebuildStructureLoading}
+            onClick={handleRebuildStructureSignals}
+            title="重新计算所有历史结构信号"
+          >
+            重建结构信号
+          </Button>
         </Space>
       </div>
 
@@ -262,6 +309,15 @@ export default function SignalsPage() {
               title="风险预警"
               value={signalStats.typeStats.RISK_ALERT}
               valueStyle={{ color: "#ff7a45" }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card size="small">
+            <Statistic
+              title="结构信号"
+              value={signalStats.typeStats.BUY_STRUCTURE + signalStats.typeStats.SELL_STRUCTURE}
+              valueStyle={{ color: "#52c41a" }}
             />
           </Card>
         </Col>

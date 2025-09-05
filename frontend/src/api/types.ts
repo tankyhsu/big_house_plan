@@ -41,6 +41,8 @@ export type SignalType =
   | "UNDERWEIGHT"    // 低配信号
   | "BUY_SIGNAL"     // 买入信号
   | "SELL_SIGNAL"    // 卖出信号
+  | "BUY_STRUCTURE"  // 买入结构信号
+  | "SELL_STRUCTURE" // 卖出结构信号
   | "REBALANCE"      // 再平衡信号
   | "RISK_ALERT"     // 风险预警
   | "MOMENTUM"       // 动量信号

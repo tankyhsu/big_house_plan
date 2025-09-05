@@ -268,3 +268,14 @@ export async function fetchKlineConfig(ts_code: string, date: string): Promise<K
     return null;
   }
 }
+
+// 新增：结构信号相关接口
+export async function generateStructureSignals(date: string) {
+  const { data } = await client.post("/api/signal/generate-structure", { date });
+  return data;
+}
+
+export async function rebuildStructureSignals() {
+  const { data } = await client.post("/api/signal/rebuild-structure");
+  return data;
+}

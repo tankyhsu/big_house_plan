@@ -300,14 +300,282 @@ class SignalGenerationService:
         为当前持仓生成信号（用于日常计算）
         
         注意：止盈止损功能已从此处移除，不再自动生成止盈止损信号
+        现在添加了结构信号生成功能
         
         Args:
             positions_df: 持仓数据DataFrame
             trade_date: 交易日期 (YYYY-MM-DD格式)，如果不提供则使用当前日期
         """
-        # 此方法现在为空实现，不再生成任何自动信号
-        # 如果将来需要其他类型的自动信号生成，可以在这里添加
-        pass
+        # 如果没有提供交易日期，使用当前日期
+        if trade_date is None:
+            from datetime import datetime
+            trade_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # 生成结构信号（买入/卖出结构）
+        try:
+            signal_count, signal_instruments = TdxStructureSignalGenerator.generate_structure_signals_for_date(trade_date)
+            if signal_count > 0:
+                print(f"生成了 {signal_count} 个结构信号: {', '.join(signal_instruments)}")
+        except Exception as e:
+            print(f"生成结构信号时发生错误: {str(e)}")
+    
+    @staticmethod
+    def rebuild_structure_signals_for_period(start_date: str, end_date: str) -> Dict[str, Any]:
+        """
+        重建指定时间段内的结构信号
+        
+        Args:
+            start_date: 开始日期 YYYY-MM-DD
+            end_date: 结束日期 YYYY-MM-DD
+            
+        Returns:
+            重建结果统计
+        """
+        with get_conn() as conn:
+            # 先删除该时间段内的结构信号
+            conn.execute("""
+                DELETE FROM signal 
+                WHERE type IN ('BUY_STRUCTURE', 'SELL_STRUCTURE') 
+                AND trade_date BETWEEN ? AND ?
+            """, (start_date, end_date))
+            conn.commit()
+            
+            # 获取该时间段内的所有交易日期
+            trade_dates = conn.execute("""
+                SELECT DISTINCT trade_date
+                FROM price_eod
+                WHERE trade_date BETWEEN ? AND ?
+                ORDER BY trade_date
+            """, (start_date, end_date)).fetchall()
+            
+            total_signals = 0
+            processed_dates = 0
+            
+            for (trade_date,) in trade_dates:
+                try:
+                    signal_count, _ = TdxStructureSignalGenerator.generate_structure_signals_for_date(trade_date)
+                    total_signals += signal_count
+                    processed_dates += 1
+                except Exception as e:
+                    print(f"处理日期 {trade_date} 时发生错误: {str(e)}")
+            
+            return {
+                "processed_dates": processed_dates,
+                "total_signals": total_signals,
+                "date_range": f"{start_date} ~ {end_date}"
+            }
+
+
+class TdxStructureSignalGenerator:
+    """通达信结构信号生成器 - 买入/卖出结构判断"""
+    
+    @staticmethod
+    def calculate_structure_signals(ts_code: str, trade_date: str) -> Tuple[bool, bool]:
+        """
+        计算某个标的在指定日期的买入/卖出结构信号
+        
+        Args:
+            ts_code: 标的代码
+            trade_date: 交易日期
+            
+        Returns:
+            (是否买入结构, 是否卖出结构)
+        """
+        with get_conn() as conn:
+            # 获取该标的前30天的价格数据（确保有足够数据计算）
+            price_data = conn.execute("""
+                SELECT trade_date, close
+                FROM price_eod 
+                WHERE ts_code = ? AND trade_date <= ?
+                ORDER BY trade_date DESC
+                LIMIT 30
+            """, (ts_code, trade_date)).fetchall()
+            
+            if len(price_data) < 15:  # 至少需要15天数据
+                return False, False
+            
+            # 转换为按日期正序排列，最新数据在最后
+            price_data.reverse()
+            closes = [float(row[1]) for row in price_data]
+            
+            # 计算买入结构信号
+            buy_signal = TdxStructureSignalGenerator._calculate_buy_structure(closes)
+            
+            # 计算卖出结构信号  
+            sell_signal = TdxStructureSignalGenerator._calculate_sell_structure(closes)
+            
+            return buy_signal, sell_signal
+    
+    @staticmethod
+    def _calculate_buy_structure(closes: List[float]) -> bool:
+        """
+        计算买入结构信号
+        通达信公式逻辑:
+        TA:=EVERY(CLOSE<REF(CLOSE,4),9); - 连续9天收盘价都小于4天前的收盘价
+        TB:=EXIST(CLOSE<REF(CLOSE,2),2); - 近2天内存在收盘价小于2天前的收盘价
+        TC:=BACKSET(TA,9); - 当TA满足时，向前9天都标记为1
+        TD:=IF(TC=1,SUM(TC,9),DRAWNULL); - 统计9天内标记数量
+        买入信号: TD=9 AND REF(TD,1)=8 - 当TD=9且前一天TD=8时触发
+        """
+        if len(closes) < 15:
+            return False
+        
+        # 计算TA: EVERY(CLOSE<REF(CLOSE,4),9)
+        ta_values = []
+        for i in range(len(closes)):
+            if i >= 9 + 4:  # 需要至少13个数据点(9天+4天前)
+                # 检查连续9天收盘价都小于4天前的收盘价
+                every_condition = True
+                for j in range(9):
+                    current_idx = i - j
+                    ref_idx = current_idx - 4
+                    if current_idx < 0 or ref_idx < 0:
+                        every_condition = False
+                        break
+                    if closes[current_idx] >= closes[ref_idx]:
+                        every_condition = False
+                        break
+                ta_values.append(1 if every_condition else 0)
+            else:
+                ta_values.append(0)
+        
+        # 计算TC: BACKSET(TA,9) - 当TA为1时，向前9天都标记为1
+        tc_values = [0] * len(closes)
+        for i in range(len(ta_values)):
+            if ta_values[i] == 1:
+                # 向前9天标记为1
+                for j in range(max(0, i-8), i+1):
+                    tc_values[j] = 1
+        
+        # 计算TD: IF(TC=1,SUM(TC,9),DRAWNULL) - 统计9天内标记数量
+        td_values = []
+        for i in range(len(tc_values)):
+            if tc_values[i] == 1:
+                # 计算前9天（包括当天）的TC总和
+                start_idx = max(0, i-8)
+                sum_tc = sum(tc_values[start_idx:i+1])
+                td_values.append(sum_tc)
+            else:
+                td_values.append(None)
+        
+        # 检查买入信号条件: TD=9 AND REF(TD,1)=8
+        if len(td_values) >= 2:
+            current_td = td_values[-1]
+            prev_td = td_values[-2]
+            
+            return (current_td == 9 and prev_td == 8)
+        
+        return False
+    
+    @staticmethod
+    def _calculate_sell_structure(closes: List[float]) -> bool:
+        """
+        计算卖出结构信号
+        通达信公式逻辑:
+        TE:=EVERY(CLOSE>REF(CLOSE,4),9); - 连续9天收盘价都大于4天前的收盘价
+        TF:=EXIST(CLOSE>REF(CLOSE,2),2); - 近2天内存在收盘价大于2天前的收盘价
+        TG:=BACKSET(TE,9); - 当TE满足时，向前9天都标记为1
+        TH:=IF(TG=1,SUM(TG,9),DRAWNULL); - 统计9天内标记数量
+        卖出信号: TH=9 AND REF(TH,1)=8 - 当TH=9且前一天TH=8时触发
+        """
+        if len(closes) < 15:
+            return False
+        
+        # 计算TE: EVERY(CLOSE>REF(CLOSE,4),9)
+        te_values = []
+        for i in range(len(closes)):
+            if i >= 9 + 4:  # 需要至少13个数据点(9天+4天前)
+                # 检查连续9天收盘价都大于4天前的收盘价
+                every_condition = True
+                for j in range(9):
+                    current_idx = i - j
+                    ref_idx = current_idx - 4
+                    if current_idx < 0 or ref_idx < 0:
+                        every_condition = False
+                        break
+                    if closes[current_idx] <= closes[ref_idx]:
+                        every_condition = False
+                        break
+                te_values.append(1 if every_condition else 0)
+            else:
+                te_values.append(0)
+        
+        # 计算TG: BACKSET(TE,9) - 当TE为1时，向前9天都标记为1
+        tg_values = [0] * len(closes)
+        for i in range(len(te_values)):
+            if te_values[i] == 1:
+                # 向前9天标记为1
+                for j in range(max(0, i-8), i+1):
+                    tg_values[j] = 1
+        
+        # 计算TH: IF(TG=1,SUM(TG,9),DRAWNULL) - 统计9天内标记数量
+        th_values = []
+        for i in range(len(tg_values)):
+            if tg_values[i] == 1:
+                # 计算前9天（包括当天）的TG总和
+                start_idx = max(0, i-8)
+                sum_tg = sum(tg_values[start_idx:i+1])
+                th_values.append(sum_tg)
+            else:
+                th_values.append(None)
+        
+        # 检查卖出信号条件: TH=9 AND REF(TH,1)=8
+        if len(th_values) >= 2:
+            current_th = th_values[-1]
+            prev_th = th_values[-2]
+            
+            return (current_th == 9 and prev_th == 8)
+        
+        return False
+
+    @staticmethod
+    def generate_structure_signals_for_date(trade_date: str) -> Tuple[int, List[str]]:
+        """
+        为指定日期生成所有标的的结构信号
+        
+        Args:
+            trade_date: 交易日期 YYYY-MM-DD
+            
+        Returns:
+            (信号数量, 信号标的列表)
+        """
+        with get_conn() as conn:
+            # 获取所有有价格数据的活跃标的
+            instruments = conn.execute("""
+                SELECT DISTINCT p.ts_code 
+                FROM price_eod p
+                JOIN instrument i ON p.ts_code = i.ts_code 
+                WHERE i.active = 1 AND p.trade_date <= ?
+            """, (trade_date,)).fetchall()
+            
+            signal_count = 0
+            signal_instruments = []
+            
+            for (ts_code,) in instruments:
+                buy_signal, sell_signal = TdxStructureSignalGenerator.calculate_structure_signals(
+                    ts_code, trade_date
+                )
+                
+                if buy_signal:
+                    signal_repo.insert_signal(
+                        conn, trade_date, ts_code=ts_code, 
+                        level="HIGH", signal_type="BUY_STRUCTURE",
+                        message=f"{ts_code} 买入结构信号触发"
+                    )
+                    signal_count += 1
+                    signal_instruments.append(f"{ts_code}(买入)")
+                
+                if sell_signal:
+                    signal_repo.insert_signal(
+                        conn, trade_date, ts_code=ts_code,
+                        level="HIGH", signal_type="SELL_STRUCTURE", 
+                        message=f"{ts_code} 卖出结构信号触发"
+                    )
+                    signal_count += 1
+                    signal_instruments.append(f"{ts_code}(卖出)")
+            
+            conn.commit()
+            return signal_count, signal_instruments
 
 
 # 向后兼容的函数别名

@@ -1,7 +1,7 @@
 import { Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
-import type { SignalRow } from "../api/types";
-import { getSignalConfig } from "../utils/signalUtils";
+import type { SignalRow, SignalType } from "../api/types";
+import { getSignalConfig } from "../utils/signalConfig";
 
 interface SignalTagsProps {
   signals: SignalRow[];
@@ -36,14 +36,14 @@ export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps)
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
       {displaySignals.map((signal, idx) => {
-        const config = getSignalConfig(signal.type);
+        const config = getSignalConfig(signal.type as SignalType);
         const relativeTime = getRelativeTimeText(signal.trade_date);
         
         // 构建详细的提示信息
         const tooltipTitle = (
           <div>
             <div><strong>{relativeTime}</strong></div>
-            <div>{config.emoji} {config.name}</div>
+            <div>{config.emoji} {config.label}</div>
             <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
               {signal.message}
             </div>
@@ -65,7 +65,7 @@ export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps)
                 color: config.color
               }}
             >
-              {config.emoji} {config.name}
+              {config.emoji} {config.label}
             </Tag>
           </Tooltip>
         );

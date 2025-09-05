@@ -1,5 +1,7 @@
 import { computeBias, computeKdj, computeMacd, mapVolumes, sma as SMA } from "./indicators";
 import { formatQuantity, formatPrice } from "../../utils/format";
+import { getSignalConfig } from "../../utils/signalConfig";
+import type { SignalType } from "../../api/types";
 
 type Item = { date: string; open: number; high?: number | null; low?: number | null; close: number; vol?: number | null };
 type Trade = { date: string; price: number };
@@ -97,25 +99,7 @@ export function buildCandleOption(params: {
     return groups;
   }, {} as Record<string, typeof processedSignals>);
   
-  // Define signal type configurations for visual representation
-  const signalConfigs: Record<string, {
-    symbol: string;
-    color: string;
-    emoji: string;
-    name: string;
-    position: 'top' | 'bottom';
-    offsetMultiplier: number;
-  }> = {
-    'UNDERWEIGHT': { symbol: 'circle', color: '#3b82f6', emoji: '📊', name: '低配', position: 'top', offsetMultiplier: 1.01 },
-    'BUY_SIGNAL': { symbol: 'triangle', color: '#10b981', emoji: '📈', name: '买入', position: 'top', offsetMultiplier: 1.015 },
-    'SELL_SIGNAL': { symbol: 'triangle', color: '#ef4444', emoji: '📉', name: '卖出', position: 'top', offsetMultiplier: 1.015 },
-    'REBALANCE': { symbol: 'diamond', color: '#8b5cf6', emoji: '⚖️', name: '再平衡', position: 'top', offsetMultiplier: 1.025 },
-    'RISK_ALERT': { symbol: 'circle', color: '#ec4899', emoji: '⚡', name: '风险预警', position: 'top', offsetMultiplier: 1.01 },
-    'MOMENTUM': { symbol: 'circle', color: '#06b6d4', emoji: '🚀', name: '动量', position: 'top', offsetMultiplier: 1.008 },
-    'MEAN_REVERT': { symbol: 'circle', color: '#1e40af', emoji: '🔄', name: '均值回归', position: 'top', offsetMultiplier: 1.008 },
-    'BULLISH': { symbol: 'circle', color: '#52c41a', emoji: '📈', name: '利好', position: 'top', offsetMultiplier: 1.01 },
-    'BEARISH': { symbol: 'circle', color: '#fa8c16', emoji: '📉', name: '利空', position: 'top', offsetMultiplier: 1.01 }
-  };
+  // 使用统一的信号配置
 
   // 布局参数
   const padTop = 12;
@@ -355,40 +339,33 @@ export function buildCandleOption(params: {
   Object.entries(signalGroups).forEach(([signalType, signalsOfType]) => {
     if (signalsOfType.length === 0) return;
     
-    const config = signalConfigs[signalType] || {
-      symbol: 'circle',
-      color: '#1890ff',
-      emoji: '📍',
-      name: signalType,
-      position: 'top' as const,
-      offsetMultiplier: 1.01
-    };
+    const config = getSignalConfig(signalType as SignalType);
     
     series.push({
       type: 'scatter',
-      name: config.name,
+      name: config.label,
       data: signalsOfType.map(signal => {
         const item = items.find(it => it.date === signal.date);
         let signalPrice: number;
         
         if (config.position === 'bottom') {
           const lowPrice = item ? (item.low ?? item.close) : (signal.price ?? 0);
-          signalPrice = (lowPrice || 0) * config.offsetMultiplier;
+          signalPrice = (lowPrice || 0) * (config.offsetMultiplier || 1.01);
         } else {
           const highPrice = item ? (item.high ?? item.close) : (signal.price ?? 0);
-          signalPrice = (highPrice || 0) * config.offsetMultiplier;
+          signalPrice = (highPrice || 0) * (config.offsetMultiplier || 1.01);
         }
         
         return {
           value: [signal.date, signalPrice],
           signalData: signal, // Store the full signal data for click handling
           tooltip: {
-            formatter: `${config.emoji}${config.name}: ${signal.message || signal.type}`
+            formatter: `${config.emoji}${config.label}: ${signal.message || signal.type}`
           },
           label: {
             show: true,
-            position: config.position,
-            formatter: `${config.emoji}${config.name}`,
+            position: config.position || 'top',
+            formatter: `${config.emoji}${config.label}`,
             textStyle: {
               color: config.color,
               fontSize: 11,
@@ -405,7 +382,7 @@ export function buildCandleOption(params: {
           }
         };
       }),
-      symbol: config.symbol,
+      symbol: config.symbol || 'circle',
       symbolSize: 12,
       symbolRotate: (signalType === 'SELL_SIGNAL' ? 180 : 0),
       itemStyle: {
@@ -475,8 +452,8 @@ export function buildCandleOption(params: {
   // Add all signal types to legend
   Object.entries(signalGroups).forEach(([signalType, signalsOfType]) => {
     if (signalsOfType.length > 0) {
-      const config = signalConfigs[signalType];
-      priceLegendData.push(config ? config.name : signalType);
+      const config = getSignalConfig(signalType as SignalType);
+      priceLegendData.push(config.label);
     }
   });
   legends.push({ type: 'plain', top: (pricePanel.top || 0) - legendH + 2, left: leftPad, right: 24, data: priceLegendData, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: '#667085' } });
@@ -694,7 +671,7 @@ export function buildCandleOption(params: {
           
           pSignals.forEach(ps => {
             const signal = ps.data.signalData;
-            const config = signalConfigs[signal.type] || { emoji: '📍', name: signal.type, color: '#1890ff' };
+            const config = getSignalConfig(signal.type as SignalType);
             
             // Signal level badge
             let levelBadge = '';
@@ -713,7 +690,7 @@ export function buildCandleOption(params: {
             html += `<div style="margin-bottom: 6px; padding: 4px 0;">`;
             html += `<div style="display: flex; align-items: center; margin-bottom: 2px;">`;
             html += `<span style="font-size: 14px; margin-right: 4px;">${config.emoji}</span>`;
-            html += `<span style="color: ${config.color}; font-weight: bold; font-size: 12px;">${config.name}</span>`;
+            html += `<span style="color: ${config.color}; font-weight: bold; font-size: 12px;">${config.label}</span>`;
             html += levelBadge;
             html += `</div>`;
             html += `<div style="color: #ccc; font-size: 11px; line-height: 1.4; margin-left: 20px;">${signal.message}</div>`;
