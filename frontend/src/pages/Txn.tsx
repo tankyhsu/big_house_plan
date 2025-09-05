@@ -3,12 +3,15 @@ import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, T
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite } from "../api/types";
-import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice } from "../api/hooks";
+import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice, lookupInstrument } from "../api/hooks";
 import type { PositionRaw } from "../api/types";
 import { formatQuantity, formatPrice, fmtPct } from "../utils/format";
 import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
 
 const ACTIONS = ["BUY", "SELL", "DIV", "FEE", "ADJ"] as const;
+
+// 完整 ts_code 格式：6 位数字 + 点 + 2~3 位字母（如 510300.SH / 110011.OF）
+const TS_CODE_FULL_RE = /^\d{6}\.[A-Za-z]{2,3}$/i;
 
 export default function TxnPage() {
   const [data, setData] = useState<TxnItem[]>([]);
@@ -32,6 +35,9 @@ export default function TxnPage() {
   const [categories, setCategories] = useState<CategoryLite[]>([]);
   // 暂存待提交的交易（当输入新代码时先存起来）
   const [pendingTxn, setPendingTxn] = useState<TxnCreate | null>(null);
+  
+  // 新代码时自动从 TuShare 查询基础信息
+  const [autoLookupName, setAutoLookupName] = useState<string | null>(null);
 
   // 当前持仓/价格信息（用于增强录单体验）
   const [posRaw, setPosRaw] = useState<PositionRaw[]>([]);
@@ -201,7 +207,7 @@ export default function TxnPage() {
         <InstrumentDisplay
           data={{
             ts_code,
-            name: record.name,
+            name: record.name || undefined,
           }}
           mode="combined"
           showLink={true}
@@ -255,6 +261,24 @@ export default function TxnPage() {
         setPendingTxn(payload);
         newInstForm.resetFields();
         newInstForm.setFieldsValue({ ts_code: tsCode, active: true });
+        
+        // 如果是完整的 ts_code 格式，尝试自动查询基础信息
+        if (TS_CODE_FULL_RE.test(tsCode)) {
+          lookupInstrument(tsCode).then(info => {
+            if (info?.name && !newInstForm.isFieldTouched("name")) {
+              setAutoLookupName(info.name);
+              newInstForm.setFieldsValue({ name: info.name });
+            }
+            if (info?.type && !newInstForm.isFieldTouched("type")) {
+              newInstForm.setFieldsValue({ type: info.type });
+            }
+          }).catch(() => {
+            setAutoLookupName(null);
+          });
+        } else {
+          setAutoLookupName(null);
+        }
+        
         setNewInstOpen(true);
         return;
       }
@@ -302,6 +326,7 @@ export default function TxnPage() {
       });
       message.success("已登记新标的");
       setNewInstOpen(false);
+      setAutoLookupName(null);
 
       // 刷新标的列表（使刚创建的可选）
       const rows = await fetchInstruments(vals.ts_code.trim());
@@ -510,7 +535,7 @@ export default function TxnPage() {
         title="登记新标的"
         open={newInstOpen}
         onOk={onCreateInstrument}
-        onCancel={() => { setNewInstOpen(false); newInstForm.resetFields(); setPendingTxn(null); }}
+        onCancel={() => { setNewInstOpen(false); newInstForm.resetFields(); setPendingTxn(null); setAutoLookupName(null); }}
         okText="保存"
         cancelText="取消"
         destroyOnClose
@@ -519,7 +544,12 @@ export default function TxnPage() {
           <Form.Item label="代码" name="ts_code" rules={[{ required: true }]}>
             <Input disabled />
           </Form.Item>
-          <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入名称" }]}>
+          <Form.Item 
+            label="名称" 
+            name="name" 
+            rules={[{ required: true, message: "请输入名称" }]}
+            extra={autoLookupName ? "已自动从 TuShare 查询并回填名称" : undefined}
+          >
             <Input placeholder="如 沪深300ETF" />
           </Form.Item>
           <Form.Item label="类型" name="type" initialValue={form.getFieldValue("type") || "STOCK"} rules={[{ required: true }]}>

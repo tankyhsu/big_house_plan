@@ -4,7 +4,7 @@ import { Card, DatePicker, Space, Button } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { fetchDashboardAgg, fetchAllSignals } from "../../api/hooks";
 import { formatQuantity } from "../../utils/format";
-import { getSignalConfig } from "../../utils/signalUtils";
+import { getSignalConfig } from "../../utils/signalConfig";
 import type { SignalRow } from "../../api/types";
 
 // 备用：按步长生成日期序列（当前未使用）

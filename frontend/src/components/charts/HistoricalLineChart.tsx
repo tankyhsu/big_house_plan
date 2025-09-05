@@ -2,7 +2,7 @@ import ReactECharts from "echarts-for-react";
 import dayjs from "dayjs";
 import { useMemo } from "react";
 import { formatQuantity, formatPrice } from "../../utils/format";
-import { getSignalConfig, getSignalPriority } from "../../utils/signalUtils";
+import { getSignalConfig, getSignalPriority } from "../../utils/signalConfig";
 import type { SignalRow } from "../../api/types";
 
 export type SeriesPoint = { date: string; value: number | null };
