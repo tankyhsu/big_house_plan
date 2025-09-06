@@ -303,7 +303,7 @@ def has_recent_stop_signal(conn: Connection, ts_code: str, check_date: str, days
 
 def has_recent_structure_signal(conn: Connection, ts_code: str, check_date: str, days_back: int = 9) -> bool:
     """
-    检查指定标的在过去一段时间内是否已有买入/卖出结构信号
+    检查指定标的在过去一段时间内是否已有九转买入/九转卖出信号
     
     Args:
         conn: 数据库连接
@@ -354,7 +354,7 @@ def insert_signal_if_no_recent_structure(
     days_back: int = 9,
 ) -> Optional[int]:
     """
-    如果过去一段时间内没有买入/卖出结构信号则插入信号记录；包含同日去重。
+    如果过去一段时间内没有九转买入/九转卖出信号则插入信号记录；包含同日去重。
     
     Args:
         conn: 数据库连接

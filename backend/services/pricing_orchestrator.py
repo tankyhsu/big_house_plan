@@ -86,6 +86,9 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                 total_skipped += (before_counts[0] - after_counts[0]) + (before_counts[1] - after_counts[1]) + (before_counts[2] - after_counts[2])
                 # Skip printing existing codes debug info
 
+    # Store updated codes for ZIG signal processing
+    updated_codes = []
+
     # STOCK: use daily with trade_cal fallback
     if stock_like:
         used_date_stock = trade_date
@@ -117,6 +120,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                     "amount": float(r["amount"]) if r["amount"] is not None else None,
                 })
                 used_dates[r["ts_code"]] = used_date_stock
+                updated_codes.append(r["ts_code"])  # 记录更新的股票代码
             with get_conn() as conn:
                 price_repo.upsert_price_eod_many(conn, bars)
             total_updated += len(bars)
@@ -154,6 +158,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                 "amount": float(last.get("amount")) if last.get("amount") is not None else None,
             })
             used_dates[code] = used_date
+            updated_codes.append(code)  # 记录更新的ETF代码
         if bars:
             with get_conn() as conn:
                 price_repo.upsert_price_eod_many(conn, bars)
@@ -193,11 +198,44 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                 "amount": None,
             })
             used_dates[code] = used_date
+            updated_codes.append(code)  # 记录更新的基金代码
         if bars:
             with get_conn() as conn:
                 price_repo.upsert_price_eod_many(conn, bars)
             total_found += len(bars)
             total_updated += len(bars)
+
+    # 如果有价格数据更新，则清理并重新生成ZIG信号
+    zig_cleanup_result = None
+    if updated_codes and total_updated > 0:
+        try:
+            from .signal_svc import TdxZigSignalGenerator
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            logger.info(f"价格同步完成，开始清理ZIG信号: {len(updated_codes)}个标的")
+            
+            # 调用ZIG信号清理和重新生成
+            zig_cleanup_result = TdxZigSignalGenerator.cleanup_and_regenerate_zig_signals(
+                yyyyMMdd_to_dash(trade_date), 
+                updated_codes
+            )
+            
+            if zig_cleanup_result and zig_cleanup_result.get("processed_instruments", 0) > 0:
+                logger.info(f"ZIG信号清理完成: 处理{zig_cleanup_result['processed_instruments']}个标的，"
+                          f"删除{zig_cleanup_result['deleted_signals']}个过时信号，"
+                          f"生成{zig_cleanup_result['generated_signals']}个新信号")
+                          
+                # 将ZIG信号处理结果添加到日志
+                log.set_context({
+                    "zig_signals_processed": zig_cleanup_result["processed_instruments"],
+                    "zig_signals_deleted": zig_cleanup_result["deleted_signals"], 
+                    "zig_signals_generated": zig_cleanup_result["generated_signals"]
+                })
+            
+        except Exception as e:
+            logger.error(f"ZIG信号清理时发生错误: {str(e)}")
+            log.write("ERROR", f"ZIG信号清理失败: {str(e)}")
 
     result = {
         "date": trade_date,
@@ -206,5 +244,14 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
         "skipped": int(total_skipped),
         "used_dates_uniq": sorted(list(set(used_dates.values()))) if used_dates else []
     }
+    
+    # 如果有ZIG信号处理结果，添加到返回结果中
+    if zig_cleanup_result:
+        result["zig_signals"] = {
+            "processed": zig_cleanup_result["processed_instruments"],
+            "deleted": zig_cleanup_result["deleted_signals"],
+            "generated": zig_cleanup_result["generated_signals"]
+        }
+    
     log.set_after(result)
     return result

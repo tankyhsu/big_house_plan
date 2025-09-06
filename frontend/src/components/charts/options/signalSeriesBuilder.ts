@@ -88,7 +88,7 @@ export function buildSignalSeries(params: {
             formatter: `${config.emoji}${config.label}: ${signal.message || signal.type}`
           },
           label: {
-            show: true,
+            show: !isStructureSignal, // 隐藏结构信号的文字标签
             position: config.position || 'top',
             formatter: `${config.emoji}${config.label}`,
             textStyle: {
@@ -109,7 +109,7 @@ export function buildSignalSeries(params: {
       }),
       symbol: config.symbol || 'circle',
       symbolSize: 12,
-      symbolRotate: (signalType === 'SELL_SIGNAL' ? 180 : 0),
+      symbolRotate: config.symbolRotate || 0,
       itemStyle: {
         color: config.color,
         borderColor: '#fff',
@@ -137,15 +137,27 @@ export function buildSignalSeries(params: {
               const targetDate = dates[targetDateIdx];
               const targetItem = items[targetDateIdx];
               
-              // 倒计时数字统一显示在蜡烛图下方
-              const lowPrice = targetItem.low ?? targetItem.close;
-              const countdownPrice = lowPrice * 0.97; // 在蜡烛图下方
+              // 根据信号类型决定倒计时数字位置
+              let countdownPrice;
+              let labelPosition;
+              
+              if (signalType === 'SELL_STRUCTURE') {
+                // 卖出信号倒计时显示在蜡烛图上方
+                const highPrice = targetItem.high ?? targetItem.close;
+                countdownPrice = highPrice * 1.06; // 在蜡烛图上方
+                labelPosition = 'top';
+              } else {
+                // 买入信号倒计时显示在蜡烛图下方
+                const lowPrice = targetItem.low ?? targetItem.close;
+                countdownPrice = lowPrice * 0.94; // 在蜡烛图下方
+                labelPosition = 'bottom';
+              }
               
               countdownData.push({
                 value: [targetDate, countdownPrice],
                 label: {
                   show: true,
-                  position: 'bottom', // 统一在下方显示
+                  position: labelPosition, // 根据信号类型动态调整位置
                   formatter: String(10 - i), // 显示 9, 8, 7, 6, 5, 4, 3, 2, 1
                   textStyle: {
                     color: config.color,

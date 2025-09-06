@@ -199,6 +199,87 @@ def api_signal_all(
     """
     return list_signal_all(type, ts_code, start_date, end_date, limit)
 
+@app.get("/api/signal/zig/test")
+def api_zig_signal_test(
+    ts_code: str = Query(..., description="标的代码"),
+    start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
+    end_date: str = Query(..., description="结束日期 YYYY-MM-DD")
+):
+    """
+    ZIG信号测试验证接口：返回指定标的在指定时间段内的ZIG指标计算结果
+    用于与通达信数据对比验证算法准确性
+    """
+    from backend.services.signal_svc import TdxZigSignalGenerator
+    return TdxZigSignalGenerator.test_zig_calculation(ts_code, start_date, end_date)
+
+@app.post("/api/signal/zig/validate")
+def api_zig_signal_validate():
+    """
+    验证ZIG算法与通达信数据的一致性
+    使用预设的测试数据进行验证
+    """
+    from backend.services.signal_svc import TdxZigSignalGenerator
+    
+    # 通达信测试数据 - 扩展为3个标的
+    test_cases = [
+        {
+            "ts_code": "301606.SZ",
+            "expected_buy_dates": ["2025-07-24", "2025-09-05"],
+            "expected_sell_dates": ["2025-06-11", "2025-08-29"]
+        },
+        {
+            "ts_code": "300573.SZ", 
+            "expected_buy_dates": ["2025-04-08", "2025-05-29", "2025-06-23"],
+            "expected_sell_dates": ["2025-05-07", "2025-06-05", "2025-09-02"]
+        },
+        {
+            "ts_code": "002847.SZ",
+            "expected_buy_dates": ["2025-08-04"], 
+            "expected_sell_dates": ["2025-06-05", "2025-09-02"]
+        }
+    ]
+    
+    results = []
+    overall_stats = {
+        "total_cases": len(test_cases),
+        "perfect_matches": 0,
+        "total_expected_signals": 0,
+        "total_matched_signals": 0
+    }
+    
+    for case in test_cases:
+        result = TdxZigSignalGenerator.validate_against_tdx_data(
+            case["ts_code"], 
+            case["expected_buy_dates"], 
+            case["expected_sell_dates"]
+        )
+        
+        results.append(result)
+        
+        if "accuracy" in result:
+            overall_stats["total_expected_signals"] += result["accuracy"]["total_expected_signals"]
+            overall_stats["total_matched_signals"] += result["accuracy"]["total_matched_signals"]
+            
+            if result["accuracy"]["accuracy_rate"] == 100.0:
+                overall_stats["perfect_matches"] += 1
+    
+    # 计算总体准确率
+    if overall_stats["total_expected_signals"] > 0:
+        overall_accuracy = (overall_stats["total_matched_signals"] / overall_stats["total_expected_signals"]) * 100
+    else:
+        overall_accuracy = 0.0
+    
+    return {
+        "validation_summary": {
+            "total_test_cases": overall_stats["total_cases"],
+            "perfect_accuracy_cases": overall_stats["perfect_matches"],
+            "overall_accuracy_rate": round(overall_accuracy, 1),
+            "total_expected_signals": overall_stats["total_expected_signals"],
+            "total_matched_signals": overall_stats["total_matched_signals"]
+        },
+        "detailed_results": results
+    }
+
 class SignalCreate(BaseModel):
     trade_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="信号日期 YYYY-MM-DD")
     ts_code: Optional[str] = Field(None, description="标的代码（兼容性）")
@@ -897,7 +978,7 @@ def api_calc(body: DateBody = Body(default=DateBody())):
 @app.post("/api/signal/generate-structure")  
 def api_generate_structure_signals(body: DateBody = Body(default=DateBody())):
     """
-    为指定日期生成结构信号（买入/卖出结构）
+    为指定日期生成结构信号（九转买入/九转卖出）
     用于日常结构信号生成
     """
     from .services.signal_svc import TdxStructureSignalGenerator
@@ -914,6 +995,58 @@ def api_generate_structure_signals(body: DateBody = Body(default=DateBody())):
         "date": formatted_date, 
         "generated_signals": signal_count,
         "signal_instruments": signal_instruments
+    }
+
+@app.post("/api/signal/generate-zig")  
+def api_generate_zig_signals(body: DateBody = Body(default=DateBody())):
+    """
+    为指定日期生成ZIG信号（ZIG买入/卖出信号）
+    用于日常ZIG信号生成
+    """
+    from .services.signal_svc import TdxZigSignalGenerator
+    from datetime import datetime
+    
+    date = body.date or datetime.now().strftime("%Y%m%d")
+    # 转换为YYYY-MM-DD格式
+    formatted_date = f"{date[0:4]}-{date[4:6]}-{date[6:8]}"
+    
+    signal_count, signal_instruments = TdxZigSignalGenerator.generate_zig_signals_for_date(formatted_date)
+    
+    return {
+        "message": "ZIG信号生成完成",
+        "date": formatted_date,
+        "signal_count": signal_count,
+        "signal_instruments": signal_instruments
+    }
+
+@app.post("/api/signal/zig/cleanup")  
+def api_cleanup_zig_signals(body: DateBody = Body(default=DateBody())):
+    """
+    清理并重新生成ZIG信号 - 用于价格更新后的信号维护
+    
+    当价格数据更新时，ZIG指标会重新计算，可能导致之前的信号不再有效。
+    此接口会：
+    1. 重新计算所有标的的ZIG信号
+    2. 删除不再有效的历史ZIG信号
+    3. 生成新的有效信号
+    4. 返回详细的清理和生成统计
+    """
+    from .services.signal_svc import TdxZigSignalGenerator
+    from datetime import datetime
+    
+    date = body.date or datetime.now().strftime("%Y%m%d")
+    # 转换为YYYY-MM-DD格式
+    formatted_date = f"{date[0:4]}-{date[4:6]}-{date[6:8]}"
+    
+    cleanup_result = TdxZigSignalGenerator.cleanup_and_regenerate_zig_signals(formatted_date)
+    
+    return {
+        "message": "ZIG信号清理重新生成完成",
+        "date": formatted_date,
+        "processed_instruments": cleanup_result["processed_instruments"],
+        "deleted_signals": cleanup_result["deleted_signals"], 
+        "generated_signals": cleanup_result["generated_signals"],
+        "signal_changes": cleanup_result["signal_changes"]
     }
 
 class SyncBody(BaseModel):
@@ -977,8 +1110,14 @@ def api_sync_prices(body: SyncBody = Body(default=SyncBody())):
         total_found = sum(r.get("found", 0) for r in all_results)
         total_updated = sum(r.get("updated", 0) for r in all_results)
         total_skipped = sum(r.get("skipped", 0) for r in all_results)
+        # 若所有结果均包含相同的跳过原因（如 no_token），在顶层透出该 reason 以便调用方快速判断
+        summary_reason = None
+        if all_results and all(r.get("reason") for r in all_results):
+            reasons = {r.get("reason") for r in all_results}
+            if len(reasons) == 1:
+                summary_reason = reasons.pop()
         
-        return {
+        response = {
             "message": "ok", 
             "dates_processed": len(dates_to_sync),
             "total_found": total_found,
@@ -987,6 +1126,9 @@ def api_sync_prices(body: SyncBody = Body(default=SyncBody())):
             "used_dates_uniq": sorted(list(all_used_dates)),
             "details": all_results
         }
+        if summary_reason:
+            response["reason"] = summary_reason
+        return response
     except Exception as e:
         log.write("ERROR", str(e))
         raise HTTPException(status_code=500, detail=f"sync failed: {str(e)}")

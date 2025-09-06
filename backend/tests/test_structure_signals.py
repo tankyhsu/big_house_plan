@@ -10,7 +10,7 @@ class TestTdxStructureSignalGenerator:
     """测试通达信结构信号生成器"""
     
     def test_calculate_buy_structure_signal_basic(self):
-        """测试买入结构信号基础逻辑"""
+        """测试九转买入信号基础逻辑"""
         # 构造符合买入条件的价格数据
         # 模拟连续下跌后开始企稳的模式
         closes = [
@@ -25,7 +25,7 @@ class TestTdxStructureSignalGenerator:
         assert result == False
         
     def test_calculate_sell_structure_signal_basic(self):
-        """测试卖出结构信号基础逻辑"""
+        """测试九转卖出信号基础逻辑"""
         # 构造符合卖出条件的价格数据
         # 模拟连续上涨后开始回调的模式
         closes = [
@@ -73,7 +73,7 @@ class TestTdxStructureSignalGenerator:
     @patch('backend.services.signal_svc.get_conn')
     @patch('backend.repository.signal_repo.insert_signal')
     def test_generate_structure_signals_for_date(self, mock_insert_signal, mock_get_conn):
-        """测试为指定日期生成结构信号"""
+        """测试为指定日期生成九转结构信号"""
         # 模拟数据库连接
         mock_conn = MagicMock()
         mock_get_conn.return_value.__enter__ = MagicMock(return_value=mock_conn)
@@ -111,7 +111,7 @@ class TestTdxStructureSignalGenerator:
         assert signal_count >= 0
         
     def test_buy_structure_calculation_logic(self):
-        """详细测试买入结构计算逻辑"""
+        """详细测试九转买入计算逻辑"""
         # 构造一个明确满足买入条件的价格序列
         # 需要满足：连续9天收盘价都小于4天前的收盘价
         closes = []
@@ -134,7 +134,7 @@ class TestTdxStructureSignalGenerator:
         assert isinstance(result, bool)
         
     def test_sell_structure_calculation_logic(self):
-        """详细测试卖出结构计算逻辑"""
+        """详细测试九转卖出计算逻辑"""
         # 构造一个明确满足卖出条件的价格序列
         # 需要满足：连续9天收盘价都大于4天前的收盘价
         closes = []

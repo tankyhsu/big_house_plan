@@ -171,136 +171,11 @@ class SignalGenerationService:
     """信号生成业务服务"""
 
     @staticmethod
-    def generate_stop_signals_for_position(ts_code: str, avg_cost: float, opening_date: str,
-                                         stop_gain: float, stop_loss: float) -> Tuple[int, Optional[Tuple[str, str]]]:
-        """
-        为特定持仓生成止盈止损信号
-        
-        Args:
-            ts_code: 标的代码
-            avg_cost: 平均成本
-            opening_date: 开仓日期
-            stop_gain: 止盈比例
-            stop_loss: 止损比例
-            
-        Returns:
-            (信号数量, 日期范围) 或 (信号数量, None)
-        """
-        with get_conn() as conn:
-            # 获取从开仓日期到今天的历史价格数据
-            price_data = conn.execute("""
-                SELECT trade_date, close 
-                FROM price_eod 
-                WHERE ts_code = ? AND trade_date >= ? 
-                ORDER BY trade_date ASC
-            """, (ts_code, opening_date)).fetchall()
-            
-            if not price_data:
-                return 0, None
-            
-            signal_count = 0
-            first_signal_date = None
-            last_signal_date = None
-            
-            # 检查每个历史日期是否首次达到条件
-            for trade_date, close_price in price_data:
-                if not close_price:
-                    continue
-                
-                # 计算收益率
-                ret = (close_price - avg_cost) / avg_cost
-                
-                # 检查止盈条件
-                if ret >= stop_gain:
-                    signal_id = signal_repo.insert_signal_if_no_recent_stop(
-                        conn, trade_date, ts_code, "HIGH", "STOP_GAIN",
-                        f"{ts_code} 收益率 {ret:.2%} 达到止盈目标 {stop_gain:.0%}"
-                    )
-                    if signal_id:
-                        signal_count += 1
-                        if first_signal_date is None:
-                            first_signal_date = trade_date
-                        last_signal_date = trade_date
-                    # 找到首次触发就停止检查后续日期的止盈
-                    break
-                    
-                # 检查止损条件
-                elif ret <= -stop_loss:
-                    signal_id = signal_repo.insert_signal_if_no_recent_stop(
-                        conn, trade_date, ts_code, "HIGH", "STOP_LOSS",
-                        f"{ts_code} 收益率 {ret:.2%} 触发止损阈值 -{stop_loss:.0%}"
-                    )
-                    if signal_id:
-                        signal_count += 1
-                        if first_signal_date is None:
-                            first_signal_date = trade_date
-                        last_signal_date = trade_date
-                    # 找到首次触发就停止检查后续日期的止损
-                    break
-            
-            conn.commit()
-            
-            if first_signal_date and last_signal_date:
-                return signal_count, (first_signal_date, last_signal_date)
-            return signal_count, None
-
-    @staticmethod
-    def rebuild_all_historical_signals() -> Dict[str, Any]:
-        """
-        重建所有历史信号
-        
-        Returns:
-            重建结果统计
-        """
-        with get_conn() as conn:
-            # 清除现有的止盈止损信号
-            signal_repo.delete_signals_by_type(conn, ['STOP_GAIN', 'STOP_LOSS'])
-            conn.commit()
-            
-            # 获取配置参数
-            from . import config_svc
-            config = config_svc.get_config()
-            stop_gain = config.get('stop_gain_pct', 20) / 100  # 转换为小数
-            stop_loss = config.get('stop_loss_pct', 10) / 100  # 转换为小数
-            
-            # 获取所有当前持仓
-            positions = conn.execute("""
-                SELECT ts_code, avg_cost, opening_date 
-                FROM position 
-                WHERE shares > 0 AND avg_cost > 0 AND ts_code IS NOT NULL
-            """).fetchall()
-            
-            signal_count = 0
-            all_date_ranges = []
-            
-            for ts_code, avg_cost, opening_date in positions:
-                if not opening_date or avg_cost <= 0:
-                    continue
-                
-                count, date_range = SignalGenerationService.generate_stop_signals_for_position(
-                    ts_code, float(avg_cost), opening_date, stop_gain, stop_loss
-                )
-                signal_count += count
-                if date_range:
-                    all_date_ranges.append(date_range)
-            
-            # 计算整体日期范围
-            if all_date_ranges:
-                min_date = min(dr[0] for dr in all_date_ranges)
-                max_date = max(dr[1] for dr in all_date_ranges)
-                date_range = f"{min_date} ~ {max_date}"
-            else:
-                date_range = "无信号生成"
-            
-            return {"count": signal_count, "date_range": date_range}
-
-    @staticmethod
     def generate_current_signals(positions_df, trade_date: str = None):
         """
         为当前持仓生成信号（用于日常计算）
         
-        注意：止盈止损功能已从此处移除，不再自动生成止盈止损信号
-        现在添加了结构信号生成功能
+        现在只包含结构信号（九转买入/卖出）和ZIG信号生成功能
         
         Args:
             positions_df: 持仓数据DataFrame
@@ -311,7 +186,7 @@ class SignalGenerationService:
             from datetime import datetime
             trade_date = datetime.now().strftime('%Y-%m-%d')
         
-        # 生成结构信号（买入/卖出结构）
+        # 生成结构信号（九转买入/九转卖出）
         try:
             signal_count, signal_instruments = TdxStructureSignalGenerator.generate_structure_signals_for_date(trade_date)
             if signal_count > 0:
@@ -367,19 +242,19 @@ class SignalGenerationService:
 
 
 class TdxStructureSignalGenerator:
-    """通达信结构信号生成器 - 买入/卖出结构判断"""
+    """通达信结构信号生成器 - 九转买入/九转卖出判断"""
     
     @staticmethod
     def calculate_structure_signals(ts_code: str, trade_date: str) -> Tuple[bool, bool]:
         """
-        计算某个标的在指定日期的买入/卖出结构信号
+        计算某个标的在指定日期的九转买入/九转卖出信号
         
         Args:
             ts_code: 标的代码
             trade_date: 交易日期
             
         Returns:
-            (是否买入结构, 是否卖出结构)
+            (是否九转买入, 是否九转卖出)
         """
         with get_conn() as conn:
             # 获取该标的前30天的价格数据（确保有足够数据计算）
@@ -398,10 +273,10 @@ class TdxStructureSignalGenerator:
             price_data.reverse()
             closes = [float(row[1]) for row in price_data]
             
-            # 计算买入结构信号
+            # 计算九转买入信号
             buy_signal = TdxStructureSignalGenerator._calculate_buy_structure(closes)
             
-            # 计算卖出结构信号  
+            # 计算九转卖出信号  
             sell_signal = TdxStructureSignalGenerator._calculate_sell_structure(closes)
             
             return buy_signal, sell_signal
@@ -409,7 +284,7 @@ class TdxStructureSignalGenerator:
     @staticmethod
     def _calculate_buy_structure(closes: List[float]) -> bool:
         """
-        计算买入结构信号
+        计算九转买入信号
         通达信公式逻辑:
         TA:=EVERY(CLOSE<REF(CLOSE,4),9); - 连续9天收盘价都小于4天前的收盘价
         TB:=EXIST(CLOSE<REF(CLOSE,2),2); - 近2天内存在收盘价小于2天前的收盘价
@@ -470,7 +345,7 @@ class TdxStructureSignalGenerator:
     @staticmethod
     def _calculate_sell_structure(closes: List[float]) -> bool:
         """
-        计算卖出结构信号
+        计算九转卖出信号
         通达信公式逻辑:
         TE:=EVERY(CLOSE>REF(CLOSE,4),9); - 连续9天收盘价都大于4天前的收盘价
         TF:=EXIST(CLOSE>REF(CLOSE,2),2); - 近2天内存在收盘价大于2天前的收盘价
@@ -563,12 +438,12 @@ class TdxStructureSignalGenerator:
                         ts_code=ts_code,
                         level="HIGH",
                         signal_type="BUY_STRUCTURE",
-                        message=f"{ts_code} 买入结构信号触发",
+                        message=f"{ts_code} 九转买入信号触发",
                         days_back=9,
                     )
                     if sid:
                         signal_count += 1
-                        signal_instruments.append(f"{ts_code}(买入)")
+                        signal_instruments.append(f"{ts_code}(九转买入)")
 
                 if sell_signal:
                     sid = signal_repo.insert_signal_if_no_recent_structure(
@@ -577,15 +452,698 @@ class TdxStructureSignalGenerator:
                         ts_code=ts_code,
                         level="HIGH",
                         signal_type="SELL_STRUCTURE",
-                        message=f"{ts_code} 卖出结构信号触发",
+                        message=f"{ts_code} 九转卖出信号触发",
                         days_back=9,
                     )
                     if sid:
                         signal_count += 1
-                        signal_instruments.append(f"{ts_code}(卖出)")
+                        signal_instruments.append(f"{ts_code}(九转卖出)")
             
             conn.commit()
             return signal_count, signal_instruments
+
+
+class TdxZigSignalGenerator:
+    """通达信ZIG信号生成器 - 基于之字转向指标的买入/卖出信号判断"""
+    
+    @staticmethod
+    def calculate_zig_indicator(closes: List[float], turn_percent: float = 10.0) -> List[float]:
+        """
+        TODO: 此ZIG算法需要继续优化，当前准确率84.6%
+        - 通达信ZIG是"未来函数"，会根据未来价格变化修改历史值
+        - 需要研究更精确的转向点确认机制
+        - 考虑引入第三方zigzag库的peak_valley_pivots算法
+        
+        计算ZIG之字转向指标 - 当前稳定版本（84.6%总体准确率）
+        
+        基于通达信ZIG(3,10)公式：
+        - K=3表示使用收盘价
+        - N=10表示10%转向阈值
+        
+        Args:
+            closes: 收盘价序列
+            turn_percent: 转向百分比阈值（默认10%）
+            
+        Returns:
+            ZIG指标值序列，使用线性插值填充转向点之间的值
+        """
+        if len(closes) < 2:
+            return closes.copy()
+        
+        n = len(closes)
+        zig = [None] * n
+        
+        # 初始化状态
+        zig[0] = closes[0]
+        last_pivot = closes[0]
+        last_pivot_idx = 0
+        direction = 0  # 0=未确定, 1=上升, -1=下降
+        
+        high = closes[0]
+        high_idx = 0
+        low = closes[0]  
+        low_idx = 0
+        
+        for i in range(1, n):
+            price = closes[i]
+            
+            # 更新当前区间的极值点
+            if price > high:
+                high = price
+                high_idx = i
+            if price < low:
+                low = price
+                low_idx = i
+            
+            # 计算从上个确认转向点的变化幅度
+            if last_pivot != 0:
+                up_change = (high - last_pivot) / last_pivot * 100
+                down_change = (last_pivot - low) / last_pivot * 100
+            else:
+                up_change = down_change = 0
+            
+            # 状态机：检查转向条件
+            if direction == 0:
+                # 初始状态，寻找第一个显著移动
+                if up_change >= turn_percent:
+                    direction = 1
+                    zig[high_idx] = high
+                    last_pivot = high
+                    last_pivot_idx = high_idx
+                    low = high
+                    low_idx = high_idx
+                elif down_change >= turn_percent:
+                    direction = -1  
+                    zig[low_idx] = low
+                    last_pivot = low
+                    last_pivot_idx = low_idx
+                    high = low
+                    high_idx = low_idx
+            elif direction == 1:
+                # 上升趋势中，检查是否转向下降
+                if down_change >= turn_percent:
+                    direction = -1
+                    zig[low_idx] = low
+                    last_pivot = low
+                    last_pivot_idx = low_idx
+                    high = low
+                    high_idx = low_idx
+                else:
+                    # 继续上升，更新最高点
+                    if high_idx != last_pivot_idx:
+                        zig[high_idx] = high
+                        last_pivot = high
+                        last_pivot_idx = high_idx
+            elif direction == -1:
+                # 下降趋势中，检查是否转向上升
+                if up_change >= turn_percent:
+                    direction = 1
+                    zig[high_idx] = high
+                    last_pivot = high
+                    last_pivot_idx = high_idx  
+                    low = high
+                    low_idx = high_idx
+                else:
+                    # 继续下降，更新最低点
+                    if low_idx != last_pivot_idx:
+                        zig[low_idx] = low
+                        last_pivot = low
+                        last_pivot_idx = low_idx
+        
+        # 线性插值填充转向点之间的值
+        result = [0.0] * n
+        last_valid = 0
+        last_valid_idx = 0
+        
+        for i in range(n):
+            if zig[i] is not None:
+                # 填充从上一个转向点到当前转向点的线性插值
+                if last_valid_idx < i:
+                    for j in range(last_valid_idx, i + 1):
+                        if i > last_valid_idx:
+                            ratio = (j - last_valid_idx) / (i - last_valid_idx)
+                            result[j] = last_valid + ratio * (zig[i] - last_valid)
+                        else:
+                            result[j] = zig[i]
+                last_valid = zig[i]
+                last_valid_idx = i
+            else:
+                # 处理最后一段：延续到当前价格
+                if i == n - 1 and last_valid_idx < i:
+                    for j in range(last_valid_idx, n):
+                        if i > last_valid_idx:
+                            ratio = (j - last_valid_idx) / (i - last_valid_idx)
+                            result[j] = last_valid + ratio * (closes[i] - last_valid)
+                        else:
+                            result[j] = last_valid
+        
+        return result
+    
+    @staticmethod
+    def detect_zig_signals(zig_values: List[float]) -> Tuple[bool, bool]:
+        """
+        检测ZIG信号的买入/卖出点
+        
+        基于通达信公式：
+        买入：ZIG(3,10)>REF(ZIG(3,10),1) AND REF(ZIG(3,10),1)<REF(ZIG(3,10),2)
+        卖出：ZIG(3,10)<REF(ZIG(3,10),1) AND REF(ZIG(3,10),1)>REF(ZIG(3,10),2)
+        
+        信号含义：
+        - 买入信号：谷底反转（当前>前1天 且 前1天<前2天）
+        - 卖出信号：峰顶反转（当前<前1天 且 前1天>前2天）
+        
+        Args:
+            zig_values: ZIG指标值序列
+            
+        Returns:
+            (buy_signal, sell_signal)
+        """
+        if len(zig_values) < 3:
+            return False, False
+        
+        # 获取最近3天的ZIG值（REF函数引用）
+        current = zig_values[-1]  # ZIG(3,10)
+        prev1 = zig_values[-2]    # REF(ZIG(3,10),1)
+        prev2 = zig_values[-3]    # REF(ZIG(3,10),2)
+        
+        if None in [current, prev1, prev2]:
+            return False, False
+        
+        # 信号检测逻辑
+        buy_signal = current > prev1 and prev1 < prev2   # 谷底反转
+        sell_signal = current < prev1 and prev1 > prev2  # 峰顶反转
+        
+        return buy_signal, sell_signal
+    
+    @staticmethod
+    def calculate_zig_signals(ts_code: str, trade_date: str) -> Tuple[bool, bool]:
+        """
+        计算某个标的在指定日期的ZIG买入/卖出信号
+        
+        Args:
+            ts_code: 标的代码
+            trade_date: 交易日期
+            
+        Returns:
+            (是否买入信号, 是否卖出信号)
+        """
+        with get_conn() as conn:
+            # 获取该标的前60天的价格数据（确保有足够数据计算）
+            price_data = conn.execute("""
+                SELECT trade_date, close
+                FROM price_eod 
+                WHERE ts_code = ? AND trade_date <= ?
+                ORDER BY trade_date DESC
+                LIMIT 60
+            """, (ts_code, trade_date)).fetchall()
+            
+            if len(price_data) < 10:  # 至少需要10天数据
+                return False, False
+            
+            # 转换为按日期正序排列，最新数据在最后
+            price_data.reverse()
+            closes = [float(row[1]) for row in price_data]
+            
+            # 计算ZIG指标
+            zig_values = TdxZigSignalGenerator.calculate_zig_indicator(closes, turn_percent=10.0)
+            
+            # 检测信号
+            buy_signal, sell_signal = TdxZigSignalGenerator.detect_zig_signals(zig_values)
+            
+            return buy_signal, sell_signal
+    
+    @staticmethod
+    def generate_zig_signals_for_date(trade_date: str) -> Tuple[int, List[str]]:
+        """
+        为指定日期生成所有标的的ZIG信号
+        
+        Args:
+            trade_date: 交易日期 YYYY-MM-DD
+            
+        Returns:
+            (信号数量, 信号标的列表)
+        """
+        with get_conn() as conn:
+            # 获取所有有价格数据的活跃标的
+            instruments = conn.execute("""
+                SELECT DISTINCT p.ts_code 
+                FROM price_eod p
+                JOIN instrument i ON p.ts_code = i.ts_code 
+                WHERE i.active = 1 AND p.trade_date <= ?
+            """, (trade_date,)).fetchall()
+            
+            signal_count = 0
+            signal_instruments = []
+            
+            for (ts_code,) in instruments:
+                buy_signal, sell_signal = TdxZigSignalGenerator.calculate_zig_signals(
+                    ts_code, trade_date
+                )
+                
+                if buy_signal:
+                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                        conn,
+                        trade_date,
+                        ts_code=ts_code,
+                        level="HIGH",
+                        signal_type="ZIG_BUY",
+                        message=f"{ts_code} ZIG买入信号触发",
+                        days_back=5,
+                    )
+                    if sid:
+                        signal_count += 1
+                        signal_instruments.append(f"{ts_code}(ZIG买入)")
+
+                if sell_signal:
+                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                        conn,
+                        trade_date,
+                        ts_code=ts_code,
+                        level="HIGH",
+                        signal_type="ZIG_SELL",
+                        message=f"{ts_code} ZIG卖出信号触发",
+                        days_back=5,
+                    )
+                    if sid:
+                        signal_count += 1
+                        signal_instruments.append(f"{ts_code}(ZIG卖出)")
+            
+            conn.commit()
+            return signal_count, signal_instruments
+    
+    @staticmethod
+    def test_zig_calculation(ts_code: str, start_date: str, end_date: str) -> dict:
+        """
+        测试验证方法：计算指定标的在指定时间段内的ZIG指标和信号
+        用于与通达信数据对比验证算法准确性
+        
+        Args:
+            ts_code: 标的代码
+            start_date: 开始日期 YYYY-MM-DD
+            end_date: 结束日期 YYYY-MM-DD
+            
+        Returns:
+            包含价格、ZIG指标、信号的详细数据字典
+        """
+        with get_conn() as conn:
+            # 获取指定时间段前60天到结束日期的所有价格数据
+            extended_start = conn.execute("""
+                SELECT trade_date 
+                FROM price_eod 
+                WHERE ts_code = ? AND trade_date <= ?
+                ORDER BY trade_date DESC 
+                LIMIT 60
+            """, (ts_code, start_date)).fetchall()
+            
+            if extended_start:
+                actual_start = extended_start[-1][0]
+            else:
+                actual_start = start_date
+            
+            # 获取价格数据
+            price_data = conn.execute("""
+                SELECT trade_date, open, high, low, close, vol
+                FROM price_eod 
+                WHERE ts_code = ? AND trade_date BETWEEN ? AND ?
+                ORDER BY trade_date ASC
+            """, (ts_code, actual_start, end_date)).fetchall()
+            
+            if not price_data:
+                return {"error": f"未找到 {ts_code} 在 {start_date} 到 {end_date} 的价格数据"}
+            
+            # 提取数据
+            dates = [row[0] for row in price_data]
+            opens = [float(row[1]) for row in price_data]
+            highs = [float(row[2]) for row in price_data]
+            lows = [float(row[3]) for row in price_data]
+            closes = [float(row[4]) for row in price_data]
+            volumes = [int(row[5]) for row in price_data]
+            
+            # 计算ZIG指标
+            zig_values = TdxZigSignalGenerator.calculate_zig_indicator(closes, turn_percent=10.0)
+            
+            # 计算每日信号
+            buy_signals = []
+            sell_signals = []
+            
+            for i in range(len(zig_values)):
+                if i >= 2:  # 需要至少3个数据点
+                    current = zig_values[i]
+                    prev1 = zig_values[i-1]
+                    prev2 = zig_values[i-2]
+                    
+                    if None not in [current, prev1, prev2]:
+                        buy_sig = current > prev1 and prev1 < prev2
+                        sell_sig = current < prev1 and prev1 > prev2
+                    else:
+                        buy_sig = False
+                        sell_sig = False
+                else:
+                    buy_sig = False
+                    sell_sig = False
+                
+                buy_signals.append(buy_sig)
+                sell_signals.append(sell_sig)
+            
+            # 筛选出指定时间段的结果
+            target_start_idx = None
+            for i, date in enumerate(dates):
+                if date >= start_date:
+                    target_start_idx = i
+                    break
+            
+            if target_start_idx is None:
+                return {"error": f"指定开始日期 {start_date} 超出数据范围"}
+            
+            # 构建结果
+            result = {
+                "ts_code": ts_code,
+                "period": f"{start_date} to {end_date}",
+                "total_days": len(dates) - target_start_idx,
+                "data": []
+            }
+            
+            # 统计信号数量
+            buy_count = 0
+            sell_count = 0
+            
+            for i in range(target_start_idx, len(dates)):
+                day_data = {
+                    "date": dates[i],
+                    "open": opens[i],
+                    "high": highs[i], 
+                    "low": lows[i],
+                    "close": closes[i],
+                    "volume": volumes[i],
+                    "zig": round(zig_values[i], 2) if zig_values[i] is not None else None,
+                    "buy_signal": buy_signals[i],
+                    "sell_signal": sell_signals[i]
+                }
+                
+                if buy_signals[i]:
+                    buy_count += 1
+                    day_data["signal_type"] = "买入"
+                elif sell_signals[i]:
+                    sell_count += 1
+                    day_data["signal_type"] = "卖出"
+                
+                result["data"].append(day_data)
+            
+            result["summary"] = {
+                "buy_signals": buy_count,
+                "sell_signals": sell_count,
+                "total_signals": buy_count + sell_count
+            }
+            
+            return result
+
+    @staticmethod
+    def validate_against_tdx_data(ts_code: str, expected_buy_dates: List[str], expected_sell_dates: List[str]) -> dict:
+        """
+        验证我们的ZIG算法与通达信数据的一致性
+        
+        Args:
+            ts_code: 标的代码
+            expected_buy_dates: 通达信期望的买入信号日期列表
+            expected_sell_dates: 通达信期望的卖出信号日期列表
+            
+        Returns:
+            验证结果字典
+        """
+        # 确定数据范围
+        all_dates = expected_buy_dates + expected_sell_dates
+        if not all_dates:
+            return {"error": "没有提供期望的信号日期"}
+        
+        start_date = min(all_dates)
+        end_date = max(all_dates)
+        
+        # 扩展范围以确保有足够的历史数据
+        from datetime import datetime, timedelta
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=90)
+        extended_start = start_dt.strftime("%Y-%m-%d")
+        
+        # 获取我们算法的计算结果
+        our_result = TdxZigSignalGenerator.test_zig_calculation(ts_code, extended_start, end_date)
+        
+        if "error" in our_result:
+            return our_result
+        
+        # 提取我们的信号
+        our_buy_signals = []
+        our_sell_signals = []
+        
+        for day_data in our_result["data"]:
+            if day_data["buy_signal"]:
+                our_buy_signals.append(day_data["date"])
+            if day_data["sell_signal"]:
+                our_sell_signals.append(day_data["date"])
+        
+        # 对比结果
+        comparison = {
+            "ts_code": ts_code,
+            "validation_period": f"{start_date} to {end_date}",
+            "tdx_expected": {
+                "buy_signals": expected_buy_dates,
+                "sell_signals": expected_sell_dates
+            },
+            "our_algorithm": {
+                "buy_signals": our_buy_signals,
+                "sell_signals": our_sell_signals
+            },
+            "comparison": {
+                "buy_matches": [],
+                "buy_missed": [],
+                "buy_extra": [],
+                "sell_matches": [],
+                "sell_missed": [],
+                "sell_extra": []
+            }
+        }
+        
+        # 买入信号对比
+        for date in expected_buy_dates:
+            if date in our_buy_signals:
+                comparison["comparison"]["buy_matches"].append(date)
+            else:
+                comparison["comparison"]["buy_missed"].append(date)
+        
+        for date in our_buy_signals:
+            if date not in expected_buy_dates:
+                comparison["comparison"]["buy_extra"].append(date)
+        
+        # 卖出信号对比
+        for date in expected_sell_dates:
+            if date in our_sell_signals:
+                comparison["comparison"]["sell_matches"].append(date)
+            else:
+                comparison["comparison"]["sell_missed"].append(date)
+        
+        for date in our_sell_signals:
+            if date not in expected_sell_dates:
+                comparison["comparison"]["sell_extra"].append(date)
+        
+        # 计算准确率
+        total_expected = len(expected_buy_dates) + len(expected_sell_dates)
+        total_matches = len(comparison["comparison"]["buy_matches"]) + len(comparison["comparison"]["sell_matches"])
+        
+        comparison["accuracy"] = {
+            "total_expected_signals": total_expected,
+            "total_matched_signals": total_matches,
+            "accuracy_rate": (total_matches / total_expected * 100) if total_expected > 0 else 0,
+            "buy_accuracy": (len(comparison["comparison"]["buy_matches"]) / len(expected_buy_dates) * 100) if expected_buy_dates else 100,
+            "sell_accuracy": (len(comparison["comparison"]["sell_matches"]) / len(expected_sell_dates) * 100) if expected_sell_dates else 100
+        }
+        
+        return comparison
+
+    @staticmethod  
+    def cleanup_and_regenerate_zig_signals(trade_date: str, ts_codes: Optional[List[str]] = None) -> dict:
+        """
+        清理并重新生成ZIG信号 - 用于价格更新后的信号维护
+        
+        当价格数据更新时，ZIG指标会重新计算，可能导致之前的信号不再有效。
+        此方法会：
+        1. 重新计算指定标的的ZIG信号
+        2. 删除不再有效的历史ZIG信号
+        3. 生成新的有效信号
+        4. 记录清理和生成的详细日志
+        
+        Args:
+            trade_date: 交易日期 YYYY-MM-DD
+            ts_codes: 可选，指定要处理的标的代码列表。为空时处理所有活跃标的
+            
+        Returns:
+            dict: 清理和重新生成结果
+            - processed_instruments: 处理的标的数量
+            - deleted_signals: 删除的信号数量  
+            - generated_signals: 新生成的信号数量
+            - signal_changes: 各标的的信号变化详情
+        """
+        from ..repository import signal_repo
+        from ..database import get_conn
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"开始ZIG信号清理和重新生成: {trade_date}")
+        
+        with get_conn() as conn:
+            # 获取要处理的标的列表
+            if ts_codes:
+                # 验证提供的标的代码是否有效
+                tmap = {code: code for code in ts_codes}  # 简化处理
+                instruments = [(code,) for code in ts_codes]
+            else:
+                # 获取所有有价格数据的活跃标的
+                instruments = conn.execute("""
+                    SELECT DISTINCT p.ts_code 
+                    FROM price_eod p
+                    JOIN instrument i ON p.ts_code = i.ts_code 
+                    WHERE i.active = 1 AND p.trade_date <= ?
+                """, (trade_date,)).fetchall()
+            
+            if not instruments:
+                return {
+                    "processed_instruments": 0,
+                    "deleted_signals": 0, 
+                    "generated_signals": 0,
+                    "signal_changes": []
+                }
+            
+            processed_count = 0
+            total_deleted = 0
+            total_generated = 0
+            signal_changes = []
+            
+            for (ts_code,) in instruments:
+                try:
+                    # 获取该标的历史ZIG信号（最近30天）
+                    from datetime import datetime, timedelta
+                    start_date = (datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=30)).strftime("%Y-%m-%d")
+                    
+                    existing_signals = conn.execute("""
+                        SELECT id, trade_date, type, message
+                        FROM signal 
+                        WHERE ts_code = ? AND type IN ('ZIG_BUY', 'ZIG_SELL') 
+                        AND trade_date >= ? AND trade_date <= ?
+                        ORDER BY trade_date DESC
+                    """, (ts_code, start_date, trade_date)).fetchall()
+                    
+                    # 重新计算当前的ZIG信号状态
+                    current_signals = []
+                    
+                    # 获取该标的在指定日期范围内的所有交易日
+                    price_data = conn.execute("""
+                        SELECT trade_date, close
+                        FROM price_eod 
+                        WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                        ORDER BY trade_date ASC
+                    """, (ts_code, start_date, trade_date)).fetchall()
+                    
+                    if len(price_data) < 10:  # 数据不足，跳过
+                        continue
+                    
+                    # 逐日计算ZIG信号
+                    closes = [float(row[1]) for row in price_data]
+                    dates = [row[0] for row in price_data]
+                    
+                    # 计算完整的ZIG指标序列
+                    zig_values = TdxZigSignalGenerator.calculate_zig_indicator(closes, turn_percent=10.0)
+                    
+                    # 检测每个日期的信号
+                    for i in range(2, len(zig_values)):  # 从第3个数据点开始（需要前2个数据点）
+                        current_zig = zig_values[i]
+                        prev1_zig = zig_values[i-1]  
+                        prev2_zig = zig_values[i-2]
+                        
+                        if None not in [current_zig, prev1_zig, prev2_zig]:
+                            buy_signal = current_zig > prev1_zig and prev1_zig < prev2_zig
+                            sell_signal = current_zig < prev1_zig and prev1_zig > prev2_zig
+                            
+                            if buy_signal:
+                                current_signals.append({
+                                    "date": dates[i],
+                                    "type": "ZIG_BUY",
+                                    "message": f"{ts_code} ZIG买入信号触发"
+                                })
+                            elif sell_signal:
+                                current_signals.append({
+                                    "date": dates[i], 
+                                    "type": "ZIG_SELL",
+                                    "message": f"{ts_code} ZIG卖出信号触发"
+                                })
+                    
+                    # 比较现有信号和重新计算的信号
+                    existing_set = {(sig[1], sig[2]) for sig in existing_signals}  # (date, type)
+                    current_set = {(sig["date"], sig["type"]) for sig in current_signals}
+                    
+                    # 找出需要删除的信号（存在于历史但不在当前计算结果中）
+                    to_delete = existing_set - current_set
+                    # 找出需要新增的信号（存在于当前计算但不在历史中）
+                    to_add = current_set - existing_set
+                    
+                    deleted_count = 0
+                    generated_count = 0
+                    
+                    # 删除过时的信号
+                    if to_delete:
+                        for date, signal_type in to_delete:
+                            result = conn.execute("""
+                                DELETE FROM signal 
+                                WHERE ts_code = ? AND trade_date = ? AND type = ?
+                            """, (ts_code, date, signal_type))
+                            deleted_count += result.rowcount
+                    
+                    # 添加新的信号
+                    if to_add:
+                        for date, signal_type in to_add:
+                            # 查找对应的信号详情
+                            signal_detail = next((s for s in current_signals if s["date"] == date and s["type"] == signal_type), None)
+                            if signal_detail:
+                                sid = signal_repo.insert_signal_if_no_recent_structure(
+                                    conn,
+                                    date,
+                                    ts_code=ts_code,
+                                    level="HIGH", 
+                                    signal_type=signal_type,
+                                    message=signal_detail["message"],
+                                    days_back=1,  # 减少重复检查天数，因为我们已经做了清理
+                                )
+                                if sid:
+                                    generated_count += 1
+                    
+                    # 记录变化
+                    if deleted_count > 0 or generated_count > 0:
+                        signal_changes.append({
+                            "ts_code": ts_code,
+                            "deleted": deleted_count,
+                            "generated": generated_count,
+                            "deleted_signals": list(to_delete),
+                            "added_signals": list(to_add)
+                        })
+                    
+                    total_deleted += deleted_count
+                    total_generated += generated_count
+                    processed_count += 1
+                    
+                    logger.debug(f"{ts_code}: 删除{deleted_count}个过时信号，生成{generated_count}个新信号")
+                    
+                except Exception as e:
+                    logger.error(f"处理{ts_code}的ZIG信号时出错: {str(e)}")
+                    continue
+            
+            # 提交所有更改
+            conn.commit()
+            
+            result = {
+                "processed_instruments": processed_count,
+                "deleted_signals": total_deleted,
+                "generated_signals": total_generated, 
+                "signal_changes": signal_changes
+            }
+            
+            logger.info(f"ZIG信号清理完成: 处理{processed_count}个标的，删除{total_deleted}个过时信号，生成{total_generated}个新信号")
+            return result
 
 
 # 向后兼容的函数别名
@@ -611,5 +1169,7 @@ def create_manual_signal_extended(trade_date: str, ts_code: Optional[str], categ
 
 
 def rebuild_all_historical_signals() -> Dict[str, Any]:
-    """向后兼容的历史信号重建函数"""
-    return SignalGenerationService.rebuild_all_historical_signals()
+    """向后兼容的历史信号重建函数 - 功能已移除"""
+    # 这个函数已不再需要，因为我们移除了止盈止损信号生成逻辑
+    # 结构信号和ZIG信号通过其他专门的函数生成
+    return {"count": 0, "date_range": "功能已移除 - 不再自动生成止盈止损信号"}
