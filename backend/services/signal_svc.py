@@ -557,22 +557,32 @@ class TdxStructureSignalGenerator:
                 )
                 
                 if buy_signal:
-                    signal_repo.insert_signal(
-                        conn, trade_date, ts_code=ts_code, 
-                        level="HIGH", signal_type="BUY_STRUCTURE",
-                        message=f"{ts_code} 买入结构信号触发"
+                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                        conn,
+                        trade_date,
+                        ts_code=ts_code,
+                        level="HIGH",
+                        signal_type="BUY_STRUCTURE",
+                        message=f"{ts_code} 买入结构信号触发",
+                        days_back=9,
                     )
-                    signal_count += 1
-                    signal_instruments.append(f"{ts_code}(买入)")
-                
+                    if sid:
+                        signal_count += 1
+                        signal_instruments.append(f"{ts_code}(买入)")
+
                 if sell_signal:
-                    signal_repo.insert_signal(
-                        conn, trade_date, ts_code=ts_code,
-                        level="HIGH", signal_type="SELL_STRUCTURE", 
-                        message=f"{ts_code} 卖出结构信号触发"
+                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                        conn,
+                        trade_date,
+                        ts_code=ts_code,
+                        level="HIGH",
+                        signal_type="SELL_STRUCTURE",
+                        message=f"{ts_code} 卖出结构信号触发",
+                        days_back=9,
                     )
-                    signal_count += 1
-                    signal_instruments.append(f"{ts_code}(卖出)")
+                    if sid:
+                        signal_count += 1
+                        signal_instruments.append(f"{ts_code}(卖出)")
             
             conn.commit()
             return signal_count, signal_instruments

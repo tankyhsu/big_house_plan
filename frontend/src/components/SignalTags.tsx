@@ -6,6 +6,7 @@ import { getSignalConfig } from "../utils/signalConfig";
 interface SignalTagsProps {
   signals: SignalRow[];
   maxDisplay?: number;
+  variant?: 'default' | 'solid'; // default: 带emoji的标签, solid: 不带emoji的实心标签
 }
 
 const getRelativeTimeText = (tradeDate: string): string => {
@@ -27,7 +28,7 @@ const getRelativeTimeText = (tradeDate: string): string => {
   }
 };
 
-export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps) {
+export default function SignalTags({ signals, maxDisplay = 5, variant = 'default' }: SignalTagsProps) {
   if (!signals || signals.length === 0) return null;
 
   const displaySignals = signals.slice(0, maxDisplay);
@@ -50,22 +51,29 @@ export default function SignalTags({ signals, maxDisplay = 5 }: SignalTagsProps)
           </div>
         );
         
+        const tagContent = variant === 'solid' ? config.label : `${config.emoji} ${config.label}`;
+        const tagStyle = variant === 'solid' ? {
+          margin: 0,
+          fontSize: '11px',
+          backgroundColor: config.color,
+          borderColor: config.color,
+          color: '#fff',
+          fontWeight: 'bold'
+        } : {
+          margin: 0, 
+          fontSize: '11px',
+          backgroundColor: config.color + '20',
+          borderColor: config.color,
+          color: config.color
+        };
+
         return (
           <Tooltip 
             key={idx} 
             title={tooltipTitle}
-            overlayStyle={{ maxWidth: 300 }}
           >
-            <Tag 
-              style={{ 
-                margin: 0, 
-                fontSize: '11px',
-                backgroundColor: config.color + '20',
-                borderColor: config.color,
-                color: config.color
-              }}
-            >
-              {config.emoji} {config.label}
+            <Tag style={tagStyle}>
+              {tagContent}
             </Tag>
           </Tooltip>
         );

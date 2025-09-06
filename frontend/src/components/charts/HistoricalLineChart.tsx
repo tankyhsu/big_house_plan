@@ -168,7 +168,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
         // 合并信号名称显示
         const signalNames = signals.map(s => {
           const cfg = getSignalConfig(s.type);
-          return `${cfg.emoji}${cfg.name}`;
+          return `${cfg.emoji}${cfg.label}`;
         }).join(' ');
         
         markLines.push({
@@ -342,7 +342,7 @@ export default function HistoricalLineChart({ series, normalize = false, height 
               html += `<div style="margin-bottom: 6px; padding: 4px 0;">`;
               html += `<div style="display: flex; align-items: center; margin-bottom: 2px;">`;
               html += `<span style="font-size: 14px; margin-right: 4px;">${config.emoji}</span>`;
-              html += `<span style="color: ${config.color}; font-weight: bold; font-size: 12px;">${config.name}</span>`;
+              html += `<span style="color: ${config.color}; font-weight: bold; font-size: 12px;">${config.label}</span>`;
               html += levelBadge;
               html += `</div>`;
               html += `<div style="color: #ccc; font-size: 11px; line-height: 1.4; margin-left: 20px;">${signal.message}</div>`;

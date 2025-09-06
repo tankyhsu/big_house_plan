@@ -301,6 +301,94 @@ def has_recent_stop_signal(conn: Connection, ts_code: str, check_date: str, days
     return existing is not None
 
 
+def has_recent_structure_signal(conn: Connection, ts_code: str, check_date: str, days_back: int = 9) -> bool:
+    """
+    检查指定标的在过去一段时间内是否已有买入/卖出结构信号
+    
+    Args:
+        conn: 数据库连接
+        ts_code: 标的代码
+        check_date: 检查日期 YYYY-MM-DD
+        days_back: 往前检查的天数，默认9天
+    
+    Returns:
+        True如果已有结构信号，False如果没有
+    """
+    # 以交易日为基准，取从check_date往前数days_back个交易日的最早日期作为窗口起点
+    # 如果过去days_back个交易日内已有结构信号，则返回True
+    # 查出该标的最近days_back个交易日（含当天）
+    trade_days = conn.execute(
+        """
+        SELECT trade_date FROM price_eod
+        WHERE ts_code=? AND trade_date <= ?
+        ORDER BY trade_date DESC
+        LIMIT ?
+        """,
+        (ts_code, check_date, days_back),
+    ).fetchall()
+    if not trade_days:
+        return False
+    # 窗口起点为这些交易日中的最早一个
+    start_date = trade_days[-1][0]
+    existing = conn.execute(
+        """
+        SELECT id FROM signal 
+        WHERE ts_code = ? 
+          AND trade_date >= ? 
+          AND trade_date <= ? 
+          AND type IN ('BUY_STRUCTURE', 'SELL_STRUCTURE')
+        LIMIT 1
+        """,
+        (ts_code, start_date, check_date),
+    ).fetchone()
+    return existing is not None
+
+
+def insert_signal_if_no_recent_structure(
+    conn: Connection,
+    trade_date: str,
+    ts_code: str,
+    level: str,
+    signal_type: str,
+    message: str,
+    days_back: int = 9,
+) -> Optional[int]:
+    """
+    如果过去一段时间内没有买入/卖出结构信号则插入信号记录；包含同日去重。
+    
+    Args:
+        conn: 数据库连接
+        trade_date: 交易日期 YYYY-MM-DD
+        ts_code: 标的代码
+        level: 信号级别
+        signal_type: 信号类型（BUY_STRUCTURE/SELL_STRUCTURE）
+        message: 信号消息
+        days_back: 往前检查的天数，默认9天
+    
+    Returns:
+        创建的信号ID，如果已存在或不应创建则返回None
+    """
+    # 结构信号过去9天内已出现则不再创建
+    if signal_type in ("BUY_STRUCTURE", "SELL_STRUCTURE"):
+        if has_recent_structure_signal(conn, ts_code, trade_date, days_back):
+            return None
+
+    # 当天同类型信号去重
+    existing = conn.execute(
+        "SELECT id FROM signal WHERE trade_date=? AND ts_code=? AND type=?",
+        (trade_date, ts_code, signal_type),
+    ).fetchone()
+    if not existing:
+        return insert_signal(
+            conn,
+            trade_date,
+            ts_code=ts_code,
+            level=level,
+            signal_type=signal_type,
+            message=message,
+        )
+    return None
+
 def insert_signal_if_no_recent_stop(conn: Connection, trade_date: str, ts_code: str,
                                    level: str, signal_type: str, message: str, 
                                    days_back: int = 30) -> Optional[int]:

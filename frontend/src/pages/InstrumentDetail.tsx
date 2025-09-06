@@ -193,7 +193,7 @@ export default function InstrumentDetail() {
               </span>
               {headerSignals.length > 0 && (
                 <div style={{ marginLeft: 8 }}>
-                  <SignalTags signals={headerSignals} maxDisplay={5} />
+                  <SignalTags signals={headerSignals} maxDisplay={5} variant="solid" />
                 </div>
               )}
             </div>

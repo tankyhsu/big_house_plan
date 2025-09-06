@@ -39,10 +39,17 @@ class PositionStatusService:
         # 转换为破折号格式
         date_dash = f"{date_yyyymmdd[:4]}-{date_yyyymmdd[4:6]}-{date_yyyymmdd[6:8]}"
         
-        # 获取配置参数 - 配置中的值已经是小数形式 (0.3 = 30%, 0.12 = 12%)
+        # 获取配置参数，并进行规范化：
+        # 支持两种形式——小数(0.3)或百分数(30/30.0)，统一转换为小数形式
         config = config_svc.get_config()
-        stop_gain_pct = config.get('stop_gain_pct', 0.20)  # 已经是小数，不需要除以100
-        stop_loss_pct = config.get('stop_loss_pct', 0.10)  # 已经是小数，不需要除以100
+        def _norm_pct(v, default):
+            try:
+                x = float(v)
+            except Exception:
+                return default
+            return x / 100.0 if x > 1.0 else x
+        stop_gain_pct = _norm_pct(config.get('stop_gain_pct', 0.20), 0.20)
+        stop_loss_pct = _norm_pct(config.get('stop_loss_pct', 0.10), 0.10)
         
         with get_conn() as conn:
             # 获取持仓和价格数据

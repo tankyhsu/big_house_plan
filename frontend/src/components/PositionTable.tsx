@@ -20,6 +20,7 @@ export default function PositionTable({ data, loading, signals }: { data: Positi
           showLink={true}
           signals={tsSignals}
           maxSignals={3}
+          signalVariant="solid"
         />
       );
     }},

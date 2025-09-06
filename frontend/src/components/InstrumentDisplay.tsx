@@ -23,6 +23,8 @@ export interface InstrumentDisplayProps {
   signals?: SignalRow[];
   /** 最大显示信号数量 */
   maxSignals?: number;
+  /** 信号显示样式 */
+  signalVariant?: 'default' | 'solid';
   /** 自定义样式 */
   style?: React.CSSProperties;
   /** 代码样式 */
@@ -40,6 +42,7 @@ export default function InstrumentDisplay({
   showLink = true,
   signals,
   maxSignals = 3,
+  signalVariant = 'default',
   style,
   codeStyle,
   nameStyle,
@@ -109,7 +112,7 @@ export default function InstrumentDisplay({
   const renderSignals = () => {
     if (!signals || signals.length === 0) return null;
 
-    return <SignalTags signals={signals} maxDisplay={maxSignals} />;
+    return <SignalTags signals={signals} maxDisplay={maxSignals} variant={signalVariant} />;
   };
 
   // 根据模式渲染不同内容

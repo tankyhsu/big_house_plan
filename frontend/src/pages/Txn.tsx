@@ -211,6 +211,7 @@ export default function TxnPage() {
           }}
           mode="combined"
           showLink={true}
+          signalVariant="solid"
         />
       ),
     },

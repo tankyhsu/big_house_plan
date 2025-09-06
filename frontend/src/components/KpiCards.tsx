@@ -1,44 +1,14 @@
 import { Card, Col, Row, Statistic, Tag, Tooltip } from "antd";
 import { fmtCny, fmtPct } from "../utils/format";
 import { InfoCircleOutlined } from "@ant-design/icons";
+import { getSignalConfig } from "../utils/signalConfig";
+import type { SignalType } from "../api/types";
 
-// 更灵活的信号类型定义，支持任意信号类型
 type Props = {
   marketValue: number; cost: number; pnl: number; ret: number | null;
   signals: Record<string, number>;
   priceFallback: boolean;
   dateText: string;
-};
-
-// 信号类型配置
-const SIGNAL_LABELS: Record<string, string> = {
-  'stop_gain': '止盈',
-  'stop_loss': '止损',
-  'overweight': '超配',
-  'underweight': '低配',
-  'buy_signal': '买入',
-  'sell_signal': '卖出',
-  'rebalance': '再平衡',
-  'risk_alert': '风险预警',
-  'momentum': '动量',
-  'mean_revert': '均值回归',
-  'bullish': '利好',
-  'bearish': '利空',
-};
-
-const SIGNAL_COLORS: Record<string, string> = {
-  'stop_gain': '#f5222d',
-  'stop_loss': '#fa541c',
-  'overweight': '#faad14',
-  'underweight': '#1890ff',
-  'buy_signal': '#52c41a',
-  'sell_signal': '#f5222d',
-  'rebalance': '#722ed1',
-  'risk_alert': '#eb2f96',
-  'momentum': '#13c2c2',
-  'mean_revert': '#2f54eb',
-  'bullish': '#52c41a',
-  'bearish': '#fa8c16',
 };
 
 export default function KpiCards({ marketValue, cost, pnl, ret, signals, priceFallback, dateText }: Props) {
@@ -91,18 +61,33 @@ export default function KpiCards({ marketValue, cost, pnl, ret, signals, priceFa
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {Object.entries(signals)
               .filter(([_, count]) => count > 0)
-              .map(([type, count]) => (
-                <Tag 
-                  key={type}
-                  color={SIGNAL_COLORS[type] || 'default'}
-                  style={{ margin: 0, fontSize: '12px', display: 'flex', alignItems: 'center' }}
-                >
-                  {SIGNAL_LABELS[type] || type}: {count}
-                </Tag>
-              ))
+              .map(([type, count]) => {
+                const config = getSignalConfig(type.toUpperCase() as SignalType);
+                return (
+                  <Tag 
+                    key={type}
+                    style={{ 
+                      margin: 0, 
+                      fontSize: '12px',
+                      backgroundColor: config.color,
+                      borderColor: config.color,
+                      color: '#fff',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    {config.label}: {count}
+                  </Tag>
+                );
+              })
             }
             {Object.values(signals).every(count => count === 0) && (
-              <Tag color="default" style={{ margin: 0, fontSize: '12px' }}>
+              <Tag style={{ 
+                margin: 0, 
+                fontSize: '12px',
+                backgroundColor: '#f5f5f5',
+                borderColor: '#d9d9d9',
+                color: '#666'
+              }}>
                 暂无信号
               </Tag>
             )}

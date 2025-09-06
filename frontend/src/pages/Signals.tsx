@@ -155,6 +155,7 @@ export default function SignalsPage() {
           }}
           mode="combined"
           showLink={true}
+          signalVariant="solid"
         />
       ),
     },
