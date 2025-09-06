@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert, Switch, Popconfirm } from "antd";
+import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Tooltip } from "antd";
 import { fetchIrrBatch, fetchAllSignals } from "../api/hooks";
 import dayjs from "dayjs";
 import type { PositionRaw, InstrumentLite, CategoryLite, SignalRow } from "../api/types";
-import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, cleanupZeroPositions, lookupInstrument } from "../api/hooks";
+import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, lookupInstrument } from "../api/hooks";
 import { formatPrice, fmtPct } from "../utils/format";
 import { getSignalsForTsCode } from "../hooks/useRecentSignals";
 import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
@@ -16,8 +16,6 @@ export default function PositionEditor() {
   const [signals, setSignals] = useState<SignalRow[]>([]);
   // 行内编辑已移除，统一使用弹窗编辑
 
-  // 控制显示 0 仓位
-  const [includeZero, setIncludeZero] = useState(true);
 
   // 新增持仓 Modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -35,10 +33,10 @@ export default function PositionEditor() {
   const [catFilter, setCatFilter] = useState<number | undefined>(undefined);
   const [globalQuery, setGlobalQuery] = useState<string>("");
 
-  const load = async (incZero = includeZero) => {
+  const load = async () => {
     setLoading(true);
     try {
-      const rows = await fetchPositionRaw(incZero);
+      const rows = await fetchPositionRaw(false); // Only show non-zero positions
       setData(rows);
     } catch (e: any) {
       message.error(e.message);
@@ -49,10 +47,9 @@ export default function PositionEditor() {
 
   // 页面打开时加载（持仓 + 下拉）
   useEffect(() => {
-    load(true);
+    load();
     fetchInstruments().then(setInstOpts).catch(() => {});
     fetchCategories().then(setCategories).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 加载最近一个月的信号数据
@@ -72,11 +69,6 @@ export default function PositionEditor() {
   }, []);
 
 
-  // includeZero 变化时刷新
-  useEffect(() => {
-    load(includeZero);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includeZero]);
 
   // 1) 顶部 state：删除全局 date（保留为注释）
   // const [date, setDate] = useState(dayjs());
@@ -181,16 +173,6 @@ export default function PositionEditor() {
 
   // 只展示与“批量清理/开关”的增量
 
-  // 批量清理 0 仓位
-  const onCleanupZero = async () => {
-    try {
-      const res = await cleanupZeroPositions(dayjs().format("YYYYMMDD"));
-      message.success(`已清理 ${res.deleted} 条 0 仓位`);
-      load();
-    } catch (e: any) {
-      message.error(e.message || "清理失败");
-    }
-  };
 
   const [irrMap, setIrrMap] = useState<Record<string, { val: number | null; reason?: string }>>({});
 
@@ -235,6 +217,7 @@ export default function PositionEditor() {
             showLink={true}
             signals={tsSignals}
             maxSignals={3}
+            signalVariant="solid"
           />
         );
       },
@@ -328,13 +311,6 @@ export default function PositionEditor() {
       <Space wrap>
         <Button onClick={() => load()}>刷新</Button>
         <Button type="primary" onClick={() => setCreateOpen(true)}>新增持仓</Button>
-        <Space align="center">
-          <span>显示 0 仓位</span>
-          <Switch checked={includeZero} onChange={setIncludeZero} />
-        </Space>
-        <Popconfirm title="确定清理所有 0 仓位吗？" onConfirm={onCleanupZero}>
-          <Button danger>清理 0 仓位</Button>
-        </Popconfirm>
         <Divider type="vertical" />
         <Space align="center" wrap>
           <span>类别</span>

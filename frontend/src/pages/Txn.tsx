@@ -3,7 +3,7 @@ import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, T
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite } from "../api/types";
-import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice, lookupInstrument } from "../api/hooks";
+import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice, lookupInstrument, fetchSettings } from "../api/hooks";
 import type { PositionRaw } from "../api/types";
 import { formatQuantity, formatPrice, fmtPct } from "../utils/format";
 import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
@@ -47,6 +47,9 @@ export default function TxnPage() {
   const [retPct, setRetPct] = useState<number | null>(null);
   const [typeLocked, setTypeLocked] = useState<boolean>(false);
   const [curName, setCurName] = useState<string | null>(null);
+  
+  // 配置信息（用于投资框架检查）
+  const [unitAmount, setUnitAmount] = useState<number>(3000);
 
   const load = async (p = page, s = size) => {
     setLoading(true);
@@ -63,10 +66,11 @@ export default function TxnPage() {
 
   useEffect(() => {
     load(1, size);
-    // 预加载：标的、类别
+    // 预加载：标的、类别、配置
     fetchInstruments().then(setInstOpts).catch(()=>{});
     fetchCategories().then(setCategories).catch(()=>{});
     fetchPositionRaw(true).then(setPosRaw).catch(()=>{});
+    fetchSettings().then(cfg => setUnitAmount(cfg.unit_amount || 3000)).catch(()=>{});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -165,6 +169,8 @@ export default function TxnPage() {
   const frameworkCompliance = useMemo(() => {
     const action = watchAction;
     const shares = Number(watchShares || 0);
+    const price = typeof watchPrice === "number" ? watchPrice : (watchPrice ? Number(watchPrice) : 0);
+    const fee = Number(watchFee || 0);
     const holdings = curShares || 0;
     
     if (!action || !shares || shares <= 0) return null;
@@ -172,11 +178,13 @@ export default function TxnPage() {
     const warnings = [];
     
     if (action === "BUY") {
-      // 买入检查：是否超过1份单位
-      if (shares > 1) {
+      // 买入检查：计算总投资金额是否超过单份限制
+      const totalAmount = price * shares + fee;
+      if (totalAmount > unitAmount) {
+        const unitsCount = (totalAmount / unitAmount).toFixed(2);
         warnings.push({
           type: "warning" as const,
-          message: `买入数量 ${shares} 份超过了投资框架建议的单次1份限制，可能存在冲动交易风险。建议分批建仓，避免一次性满仓。`
+          message: `本次买入总金额 ¥${totalAmount.toFixed(2)}（数量${shares} × 价格¥${price.toFixed(2)} + 费用¥${fee.toFixed(2)}）超过了投资框架建议的单份金额¥${unitAmount}，相当于 ${unitsCount} 份单位。可能存在冲动交易风险，建议分批建仓。`
         });
       }
     } else if (action === "SELL") {
@@ -195,7 +203,7 @@ export default function TxnPage() {
     }
     
     return warnings.length > 0 ? warnings : null;
-  }, [watchAction, watchShares, curShares]);
+  }, [watchAction, watchShares, watchPrice, watchFee, curShares, unitAmount]);
 
   const columns: ColumnsType<TxnItem> = [
     { title: "日期", dataIndex: "trade_date", width: 120 },

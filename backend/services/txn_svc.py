@@ -121,6 +121,16 @@ def create_txn(data: dict, log: LogContext) -> dict:
                 conn.rollback()
                 raise ValueError("Sell exceeds current shares")
             position_repo.upsert_position(conn, ts_code, new_shares, new_cost, date)
+            
+            # 如果卖出后持仓变为0，自动加入自选关注
+            if action == "SELL" and abs(new_shares) <= 1e-6 and old_shares > 0:
+                from ..repository import watchlist_repo
+                if not watchlist_repo.exists(conn, ts_code):
+                    try:
+                        watchlist_repo.add(conn, ts_code, "自动从零持仓移入")
+                    except Exception:
+                        # 忽略添加失败的情况（比如instrument不存在）
+                        pass
 
         # 3) 现金镜像 / 现金直接调整
         cfg = get_config()

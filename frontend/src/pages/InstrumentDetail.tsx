@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, Select, Space, Typography, message, Table, DatePicker, Row, Col, Tabs } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals, syncPrices } from "../api/hooks";
 import CandleChart from "../components/charts/CandleChart";
@@ -216,17 +217,22 @@ export default function InstrumentDetail() {
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Space direction="vertical" style={{ width: "100%" }} size={4}>
         <Space align="center" style={{ justifyContent: "space-between", width: "100%" }}>
-          <Typography.Title level={3} style={{ margin: 0 }}>标的详情</Typography.Title>
-          <Space>
+          <Space align="center">
             <Button 
-              onClick={onSyncPrices} 
-              loading={syncing}
-              title="从TuShare同步过去90天的价格数据"
-            >
-              {syncing ? "同步中..." : "同步90天数据"}
-            </Button>
-            <Button onClick={() => navigate("/positions")}>返回持仓编辑</Button>
+              type="text" 
+              icon={<ArrowLeftOutlined />} 
+              onClick={() => window.history.back()}
+              style={{ padding: "4px 8px" }}
+            />
+            <Typography.Title level={3} style={{ margin: 0 }}>标的详情</Typography.Title>
           </Space>
+          <Button 
+            onClick={onSyncPrices} 
+            loading={syncing}
+            title="从TuShare同步过去90天的价格数据"
+          >
+            {syncing ? "同步中..." : "同步90天数据"}
+          </Button>
         </Space>
         {/* 详情页头部：代码｜名称｜类别｜启用状态｜最新价格与涨跌 */}
         {inst && (

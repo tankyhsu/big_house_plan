@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, DatePicker, Flex, Input, message, Modal, Space, Table, AutoComplete, Tag, Form, Select, Alert } from "antd";
+import { Button, DatePicker, Flex, Input, message, Modal, Space, Table, AutoComplete, Tag, Form, Select, Alert } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { dashedToYmd } from "../utils/format";
@@ -35,6 +35,9 @@ export default function WatchlistPage() {
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   // const [signalsLoading, setSignalsLoading] = useState(false);
+  
+  // 各标的的信号数据（用于表格显示）
+  const [itemSignals, setItemSignals] = useState<Record<string, SignalRow[]>>({});
 
   const load = async () => {
     setLoading(true);
@@ -45,6 +48,29 @@ export default function WatchlistPage() {
       if (selected) {
         const cur = data.find(d => d.ts_code === selected.ts_code) || null;
         setSelected(cur);
+      }
+      
+      // 为每个标的加载最近信号（最近30天，最多3条）
+      if (data.length > 0) {
+        const today = dayjs().format("YYYY-MM-DD");
+        const monthAgo = dayjs().subtract(30, "day").format("YYYY-MM-DD");
+        
+        // 并行加载所有标的的信号
+        const signalPromises = data.map(async (item) => {
+          try {
+            const signals = await fetchAllSignals(undefined, item.ts_code, monthAgo, today, 3);
+            return { ts_code: item.ts_code, signals: signals || [] };
+          } catch {
+            return { ts_code: item.ts_code, signals: [] };
+          }
+        });
+        
+        const signalResults = await Promise.all(signalPromises);
+        const signalsMap: Record<string, SignalRow[]> = {};
+        signalResults.forEach(({ ts_code, signals }) => {
+          signalsMap[ts_code] = signals;
+        });
+        setItemSignals(signalsMap);
       }
     } catch (e: any) {
       message.error(e?.message || "加载失败");
@@ -201,11 +227,20 @@ export default function WatchlistPage() {
       title: "标的",
       dataIndex: "ts_code",
       key: "ts_code",
-      width: 200,
+      width: 280,
       render: (_: any, r) => (
         <div>
-          <InstrumentDisplay data={{ ts_code: r.ts_code, name: (r.name || undefined) }} />
-          {r.has_position && <Tag color="blue" size="small" style={{ marginTop: 4 }}>已持仓</Tag>}
+          <InstrumentDisplay 
+            data={{ ts_code: r.ts_code, name: (r.name || undefined) }}
+            mode="combined"
+            showLink={true}
+            signals={itemSignals[r.ts_code] || []}
+            maxSignals={2}
+            signalVariant="solid"
+          />
+          <div style={{ marginTop: 4 }}>
+            {r.has_position && <Tag color="blue">已持仓</Tag>}
+          </div>
         </div>
       ),
     },
@@ -258,17 +293,15 @@ export default function WatchlistPage() {
         </Space>
       </Flex>
 
-      <Card title="我的自选" size="small" styles={{ body: { padding: 12 } }}>
-        <Table
-          size="small"
-          rowKey={(r) => r.ts_code}
-          loading={loading}
-          dataSource={items}
-          columns={columns}
-          pagination={{ pageSize: 15, showTotal: (t) => `共 ${t} 条` }}
-          scroll={{ x: 'max-content' }}
-        />
-      </Card>
+      <Table
+        size="small"
+        rowKey={(r) => r.ts_code}
+        loading={loading}
+        dataSource={items}
+        columns={columns}
+        pagination={{ pageSize: 15, showTotal: (t) => `共 ${t} 条` }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <Modal
         title={selected ? `${selected.ts_code}｜${selected.name ?? ''}` : "标的详情"}

@@ -91,10 +91,6 @@ export async function deletePositionOne(ts_code: string, recalcDate?: string) {
   return data as { message: string; deleted: number };
 }
 
-export async function cleanupZeroPositions(recalcDate?: string) {
-  const { data } = await client.post("/api/position/cleanup-zero", { recalc_date: recalcDate });
-  return data as { message: string; deleted: number };
-}
 
 // 更新一条底仓
 export async function updatePositionOne(payload: { ts_code: string; shares?: number; avg_cost?: number; date: string; opening_date?: string; }) {

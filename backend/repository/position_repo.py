@@ -43,7 +43,7 @@ def upsert_opening_position(
     )
 
 
-def list_positions_raw(conn: Connection, include_zero: bool = True):
+def list_positions_raw(conn: Connection, include_zero: bool = False):
     sql = """
     SELECT p.ts_code, p.shares, p.avg_cost, p.last_update, p.opening_date,
            i.name AS inst_name, i.category_id, i.type AS inst_type, i.active,
@@ -63,9 +63,6 @@ def delete_position(conn: Connection, ts_code: str) -> int:
     return cur.rowcount
 
 
-def cleanup_zero_positions(conn: Connection) -> int:
-    cur = conn.execute("DELETE FROM position WHERE shares <= 0")
-    return cur.rowcount
 
 
 def list_position_codes_with_shares(conn: Connection) -> list[str]:

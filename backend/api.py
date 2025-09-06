@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from .logs import ensure_log_schema, LogContext, search_logs
 from .db import get_conn
 from .services.config_svc import get_config, update_config
-from .services.position_svc import list_positions_raw, set_opening_position, update_position_one, delete_position, cleanup_zero_positions
+from .services.position_svc import list_positions_raw, set_opening_position, update_position_one, delete_position
 from .services.instrument_svc import create_instrument, list_instruments, seed_load, get_instrument_detail, edit_instrument
 from .services.category_svc import create_category, list_categories, update_category as svc_update_category
 from .services.txn_svc import create_txn, list_txn, bulk_txn
@@ -873,21 +873,6 @@ def api_position_delete(body: DeletePosBody):
         log.write("ERROR", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-class CleanupZeroBody(BaseModel):
-    recalc_date: Optional[str] = None  # YYYYMMDD，可选
-
-@app.post("/api/position/cleanup-zero")
-def api_position_cleanup_zero(body: CleanupZeroBody = CleanupZeroBody()):
-    log = LogContext("CLEANUP_ZERO_POSITIONS")
-    try:
-        n = cleanup_zero_positions()
-        if body.recalc_date:
-            calc(body.recalc_date, LogContext("CALC_AFTER_CLEANUP_ZERO"))
-        log.write("OK")
-        return {"message": "ok", "deleted": n}
-    except Exception as e:
-        log.write("ERROR", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================

@@ -52,26 +52,3 @@ def delete_position(ts_code: str) -> int:
         conn.commit()
         return cur
 
-def cleanup_zero_positions() -> int:
-    """清理零持仓，并将清理的标的自动加入自选"""
-    from ..repository import watchlist_repo
-    
-    with get_conn() as conn:
-        # 先获取即将被清理的零持仓标的
-        cursor = conn.execute("SELECT ts_code FROM position WHERE shares <= 0")
-        zero_position_codes = [row[0] for row in cursor.fetchall()]
-        
-        # 清理零持仓
-        cur = position_repo.cleanup_zero_positions(conn)
-        
-        # 将清理的标的加入自选（如果不存在的话）
-        for ts_code in zero_position_codes:
-            if not watchlist_repo.exists(conn, ts_code):
-                try:
-                    watchlist_repo.add(conn, ts_code, "自动从零持仓移入")
-                except Exception:
-                    # 忽略添加失败的情况（比如instrument不存在）
-                    pass
-        
-        conn.commit()
-        return cur
