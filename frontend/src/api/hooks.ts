@@ -316,3 +316,26 @@ export async function rebuildStructureSignals() {
   const { data } = await client.post("/api/signal/rebuild-structure");
   return data;
 }
+
+// 同步价格数据
+export type SyncPricesParams = {
+  date?: string;        // 结束日期，格式YYYYMMDD，不传则今天
+  days?: number;        // 同步过去N天的数据
+  ts_codes?: string[];  // 指定要同步的标的代码
+  recalc?: boolean;     // 是否重新计算
+};
+
+export type SyncPricesResult = {
+  message: string;
+  dates_processed: number;
+  total_found: number;
+  total_updated: number;
+  total_skipped: number;
+  used_dates_uniq: string[];
+  details: any[];
+};
+
+export async function syncPrices(params: SyncPricesParams): Promise<SyncPricesResult> {
+  const { data } = await client.post("/api/sync-prices", params);
+  return data;
+}

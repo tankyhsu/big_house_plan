@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, Select, Space, Typography, message, Table, DatePicker, Row, Col, Tabs } from "antd";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals } from "../api/hooks";
+import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals, syncPrices } from "../api/hooks";
 import CandleChart from "../components/charts/CandleChart";
 import SignalTags from "../components/SignalTags";
 import type { CategoryLite, InstrumentDetail, SignalRow } from "../api/types";
@@ -28,6 +28,7 @@ export default function InstrumentDetail() {
   const [headerSignals, setHeaderSignals] = useState<SignalRow[]>([]); // Header显示用的信号（一个月）
   const [chartSignals, setChartSignals] = useState<SignalRow[]>([]); // K线图显示用的信号（6个月）
   const [signalsLoading, setSignalsLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false); // 同步按钮状态
 
   const load = async () => {
     setLoading(true);
@@ -164,6 +165,44 @@ export default function InstrumentDetail() {
     }
   };
 
+  const onSyncPrices = async () => {
+    if (!ts_code) return;
+    setSyncing(true);
+    try {
+      const result = await syncPrices({
+        ts_codes: [ts_code],
+        days: 90,
+        recalc: true, // 自动重算
+      });
+      
+      message.success(
+        `同步完成：处理${result.dates_processed}个日期，找到${result.total_found}条数据，更新${result.total_updated}条，跳过${result.total_skipped}条`
+      );
+      
+      // 重新加载价格数据以更新头部显示和K线图
+      const end = dayjs();
+      const start = end.subtract(20, "day");
+      fetchOhlcRange(ts_code, start.format("YYYYMMDD"), end.format("YYYYMMDD")).then(items => {
+        const valid = items.filter(it => typeof it.close === 'number');
+        if (valid.length > 0) {
+          const last = valid[valid.length - 1];
+          const prev = valid.length > 1 ? valid[valid.length - 2] : null;
+          setLastPrice({ date: last.date, close: last.close, prevClose: prev ? prev.close : null });
+        }
+      }).catch(() => {});
+      
+      // 提示用户刷新页面或切换tab以查看更新的K线图
+      setTimeout(() => {
+        message.info('数据同步完成，K线图将自动更新显示最新数据');
+      }, 1000);
+      
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || e?.message || "同步失败");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const txnColumns: ColumnsType<any> = useMemo(() => ([
     { title: "日期", dataIndex: "date", width: 110 },
     { title: "动作", dataIndex: "action", width: 80 },
@@ -179,6 +218,13 @@ export default function InstrumentDetail() {
         <Space align="center" style={{ justifyContent: "space-between", width: "100%" }}>
           <Typography.Title level={3} style={{ margin: 0 }}>标的详情</Typography.Title>
           <Space>
+            <Button 
+              onClick={onSyncPrices} 
+              loading={syncing}
+              title="从TuShare同步过去90天的价格数据"
+            >
+              {syncing ? "同步中..." : "同步90天数据"}
+            </Button>
             <Button onClick={() => navigate("/positions")}>返回持仓编辑</Button>
           </Space>
         </Space>

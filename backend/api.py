@@ -934,29 +934,77 @@ def api_generate_structure_signals(body: DateBody = Body(default=DateBody())):
 class SyncBody(BaseModel):
     date: Optional[str] = None      # YYYYMMDD；不传则今天
     recalc: bool = False            # NEW: 同步后是否自动重算
+    ts_codes: Optional[List[str]] = None  # NEW: 指定要同步的标的代码列表
+    days: Optional[int] = None      # NEW: 同步过去N天的数据（从指定日期往前）
 
 @app.post("/api/sync-prices")
 def api_sync_prices(body: SyncBody = Body(default=SyncBody())):
     """
     同步指定日期的收盘价/净值（TuShare），仅落库到 price_eod。
+    支持：
+    - 单日同步: 仅传 date 
+    - 多日同步: 传 date + days，从date往前同步days天
+    - 指定标的: 传 ts_codes 列表
     recalc=true 时，会按实际 used_dates_uniq 逐日自动重算（calc）。
     """
-    date = body.date or datetime.now().strftime("%Y%m%d")
+    from datetime import datetime, timedelta
+    
+    end_date = body.date or datetime.now().strftime("%Y%m%d")
+    ts_codes = body.ts_codes
+    
+    # 计算要同步的日期列表
+    dates_to_sync = [end_date]
+    if body.days and body.days > 1:
+        end_dt = datetime.strptime(end_date, "%Y%m%d")
+        dates_to_sync = []
+        for i in range(body.days):
+            sync_date = end_dt - timedelta(days=i)
+            dates_to_sync.append(sync_date.strftime("%Y%m%d"))
+    
     log = LogContext("SYNC_PRICES_TUSHARE")
-    log.set_payload({"date": date, "recalc": body.recalc})
+    log.set_payload({"dates": dates_to_sync, "ts_codes": ts_codes, "recalc": body.recalc})
+    
+    all_results = []
+    all_used_dates = set()
+    
     try:
-        res = sync_prices_tushare(date, log)
+        # 逐日同步
+        for date in dates_to_sync:
+            if ts_codes:
+                # 指定标的同步
+                res = sync_prices_tushare(date, LogContext(f"SYNC_{date}"), ts_codes)
+            else:
+                # 全量同步
+                res = sync_prices_tushare(date, LogContext(f"SYNC_{date}"))
+            
+            all_results.append(res)
+            used_dates = res.get("used_dates_uniq") or [date]
+            all_used_dates.update(used_dates)
+        
         log.write("OK")
 
         if body.recalc:
-            # 对股票/基金分别可能回退到不同日期，这里逐日重算，保证快照同步
-            dates = res.get("used_dates_uniq") or [date]
-            for d in dates:
+            # 对所有影响的日期逐日重算
+            for d in sorted(all_used_dates):
                 calc(d, LogContext("CALC_AFTER_SYNC"))
-        return {"message": "ok", **res}
+        
+        # 汇总结果
+        total_found = sum(r.get("found", 0) for r in all_results)
+        total_updated = sum(r.get("updated", 0) for r in all_results)
+        total_skipped = sum(r.get("skipped", 0) for r in all_results)
+        
+        return {
+            "message": "ok", 
+            "dates_processed": len(dates_to_sync),
+            "total_found": total_found,
+            "total_updated": total_updated,
+            "total_skipped": total_skipped,
+            "used_dates_uniq": sorted(list(all_used_dates)),
+            "details": all_results
+        }
     except Exception as e:
         log.write("ERROR", str(e))
-        raise HTTPException(status_code=500, detail="sync failed")
+        raise HTTPException(status_code=500, detail=f"sync failed: {str(e)}")
 
 @app.post("/api/report/export")
 def api_export(body: DateBody = Body(default=DateBody())):
