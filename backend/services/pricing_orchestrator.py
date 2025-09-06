@@ -25,8 +25,26 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
             tmap = instrument_repo.type_map_for(conn, ts_codes)
             all_targets = [(code, (tmap.get(code, "") or "").upper()) for code in ts_codes]
         else:
+            # 获取活跃的instrument标的
             rows = conn.execute("SELECT ts_code, COALESCE(type,'') AS t FROM instrument WHERE active=1").fetchall()
-            all_targets = [(r["ts_code"], (r["t"] or "").upper()) for r in rows]
+            active_targets = [(r["ts_code"], (r["t"] or "").upper()) for r in rows]
+            
+            # 获取自选标的（需要连接instrument表获取type信息）
+            watchlist_rows = conn.execute("""
+                SELECT w.ts_code, COALESCE(i.type,'') AS t 
+                FROM watchlist w 
+                LEFT JOIN instrument i ON i.ts_code = w.ts_code 
+                WHERE i.active = 1
+            """).fetchall()
+            watchlist_targets = [(r["ts_code"], (r["t"] or "").upper()) for r in watchlist_rows]
+            
+            # 合并并去重
+            all_codes = set()
+            all_targets = []
+            for code, t in active_targets + watchlist_targets:
+                if code not in all_codes:
+                    all_codes.add(code)
+                    all_targets.append((code, t))
 
     if not all_targets:
         info = {"date": trade_date, "found": 0, "updated": 0, "skipped": 0, "reason": "no_active_codes"}

@@ -175,3 +175,17 @@ export type KlineConfig = {
   stop_gain_price: number;
   stop_loss_price: number;
 };
+
+// 自选关注 Watchlist
+export type WatchlistItem = {
+  ts_code: string;
+  name: string | null;
+  type?: string | null;
+  active?: boolean | 0 | 1 | null;
+  category_id?: number | null;
+  note?: string | null;
+  created_at?: string | null;
+  last_price?: number | null;
+  last_price_date?: string | null;
+  has_position?: boolean; // 是否已持仓
+};

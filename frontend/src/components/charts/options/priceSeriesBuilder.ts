@@ -54,7 +54,7 @@ export function buildPriceSeries(params: {
   });
 
   // 持仓成本线和止盈止损阈值线
-  if (klineConfig) {
+  if (klineConfig && typeof klineConfig.avg_cost === 'number' && !isNaN(klineConfig.avg_cost)) {
     const avgCostData = Array(dates.length).fill(klineConfig.avg_cost);
     
     // 获取最新收盘价以判断当前盈亏状态
@@ -83,7 +83,7 @@ export function buildPriceSeries(params: {
     });
 
     // 根据当前盈亏状态显示对应的止盈或止损线
-    if (isProfitable) {
+    if (isProfitable && typeof klineConfig.stop_gain_price === 'number' && !isNaN(klineConfig.stop_gain_price)) {
       // 盈利时显示止盈线
       const stopGainData = Array(dates.length).fill(klineConfig.stop_gain_price);
       series.push({
@@ -105,7 +105,7 @@ export function buildPriceSeries(params: {
           formatter: () => `止盈线: ¥${klineConfig.stop_gain_price.toFixed(2)} (+${(klineConfig.stop_gain_threshold * 100).toFixed(0)}%)`
         }
       });
-    } else {
+    } else if (typeof klineConfig.stop_loss_price === 'number' && !isNaN(klineConfig.stop_loss_price)) {
       // 亏损时显示止损线
       const stopLossData = Array(dates.length).fill(klineConfig.stop_loss_price);
       series.push({

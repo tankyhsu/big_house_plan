@@ -110,6 +110,15 @@ CREATE TABLE
     message TEXT
   );
 
+-- 自选关注（Watchlist）：用于管理想要关注但未必持仓的标的
+-- 仅关联 instrument.ts_code，不参与类别目标/再平衡等计算
+CREATE TABLE
+  IF NOT EXISTS watchlist (
+    ts_code TEXT PRIMARY KEY,
+    note TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
 CREATE TABLE
   IF NOT EXISTS operation_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

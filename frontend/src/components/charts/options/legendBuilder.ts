@@ -35,14 +35,14 @@ export function buildLegends(params: {
   // Price panel legend
   const priceLegendData: string[] = [tsCode, ...maList.map(p => `MA${p}`)];
   
-  if (klineConfig) {
+  if (klineConfig && typeof klineConfig.avg_cost === 'number' && !isNaN(klineConfig.avg_cost)) {
     const latestPrice = items.length > 0 ? items[items.length - 1].close : klineConfig.avg_cost;
     const isProfitable = latestPrice > klineConfig.avg_cost;
     
     priceLegendData.push(`成本线 (¥${klineConfig.avg_cost.toFixed(2)})`);
-    if (isProfitable) {
+    if (isProfitable && typeof klineConfig.stop_gain_price === 'number' && !isNaN(klineConfig.stop_gain_price)) {
       priceLegendData.push(`止盈线 (+${(klineConfig.stop_gain_threshold * 100).toFixed(0)}% ¥${klineConfig.stop_gain_price.toFixed(2)})`);
-    } else {
+    } else if (typeof klineConfig.stop_loss_price === 'number' && !isNaN(klineConfig.stop_loss_price)) {
       priceLegendData.push(`止损线 (-${(klineConfig.stop_loss_threshold * 100).toFixed(0)}% ¥${klineConfig.stop_loss_price.toFixed(2)})`);
     }
   }

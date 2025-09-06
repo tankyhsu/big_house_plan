@@ -19,12 +19,13 @@ from .db import get_conn
 from .services.config_svc import get_config, update_config
 from .services.position_svc import list_positions_raw, set_opening_position, update_position_one, delete_position, cleanup_zero_positions
 from .services.instrument_svc import create_instrument, list_instruments, seed_load, get_instrument_detail, edit_instrument
-from .services.category_svc import create_category, list_categories
+from .services.category_svc import create_category, list_categories, update_category as svc_update_category
 from .services.txn_svc import create_txn, list_txn, bulk_txn
 from .domain.txn_engine import round_price, round_quantity, round_shares, round_amount
 from .services.pricing_svc import sync_prices_tushare
 from .services.calc_svc import calc
 from .services.dashboard_svc import get_dashboard, list_category, list_position, list_signal, list_signal_all, aggregate_kpi
+from .services.watchlist_svc import ensure_watchlist_schema, list_watchlist, add_to_watchlist, remove_from_watchlist
 from .services.analytics_svc import compute_position_xirr, compute_position_xirr_batch
 from .services.utils import yyyyMMdd_to_dash
 from .db import get_conn
@@ -61,6 +62,11 @@ def on_startup():
     """启动时确保日志/表结构，并后台同步一次“今天”的价格（无 token 将跳过而不报错）"""
     ensure_log_schema()
     ensure_default_config()
+    # ensure watchlist table exists
+    try:
+        ensure_watchlist_schema()
+    except Exception as e:
+        LogContext("STARTUP").write("ERROR", f"ensure_watchlist_schema_failed: {e}")
 
     # def _sync_once():
     #     try:
@@ -202,6 +208,42 @@ class SignalCreate(BaseModel):
     level: str = Field(..., pattern="^(HIGH|MEDIUM|LOW|INFO)$", description="信号级别")
     type: str = Field(..., description="信号类型")
     message: str = Field(..., max_length=500, description="信号描述信息")
+
+# =============================================================================
+# Watchlist / 自选关注
+# =============================================================================
+class WatchlistAdd(BaseModel):
+    ts_code: str
+    note: Optional[str] = None
+
+
+@app.get("/api/watchlist")
+def api_watchlist(date: Optional[str] = Query(None, pattern=r"^\d{8}$")):
+    try:
+        items = list_watchlist(with_last_price=True, on_date_yyyymmdd=date)
+        return {"items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/watchlist/add")
+def api_watchlist_add(body: WatchlistAdd):
+    try:
+        add_to_watchlist(body.ts_code, body.note)
+        return {"message": "ok"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/watchlist/remove")
+def api_watchlist_remove(ts_code: str = Body(..., embed=True)):
+    try:
+        remove_from_watchlist(ts_code)
+        return {"message": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/signal/rebuild-historical")
 def api_rebuild_historical_signals():
@@ -354,6 +396,19 @@ class CategoryCreate(BaseModel):
     sub_name: str = ""
     target_units: float
 
+class CategoryUpdate(BaseModel):
+    id: int
+    sub_name: Optional[str] = None
+    target_units: Optional[float] = None
+
+class CategoryUpdateItem(BaseModel):
+    id: int
+    sub_name: Optional[str] = None
+    target_units: Optional[float] = None
+
+class CategoryBulkUpdate(BaseModel):
+    items: List[CategoryUpdateItem]
+
 class InstrumentCreate(BaseModel):
     ts_code: str
     name: str
@@ -387,6 +442,123 @@ def api_category_create(body: CategoryCreate):
         new_id = create_category(body.name, body.sub_name, body.target_units, log)
         log.write("OK")
         return {"message": "ok", "id": new_id}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/category/update")
+def api_category_update(body: CategoryUpdate):
+    """更新类别信息：仅允许修改二级分类(sub_name)与目标份数(target_units)，大类名称不可修改。"""
+    log = LogContext("UPDATE_CATEGORY")
+    log.set_payload(body.dict())
+    try:
+        if body.sub_name is None and body.target_units is None:
+            raise HTTPException(status_code=400, detail="at_least_one_field_required")
+        updated = svc_update_category(body.id, sub_name=body.sub_name, target_units=body.target_units, log=log)
+        log.write("OK")
+        return {"message": "ok", "category": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.write("ERROR", str(e))
+        # 可能触发唯一性约束冲突
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/category/bulk-update")
+def api_category_bulk_update(body: CategoryBulkUpdate):
+    """
+    批量更新类别：仅支持 sub_name / target_units。若总目标份数 < 150，则自动将剩余份数分配到“现金”类别。
+    现金类别由 config.cash_ts_code -> instrument(category_id) 推导。
+    """
+    log = LogContext("BULK_UPDATE_CATEGORY")
+    log.set_payload({"items": [it.dict() for it in body.items]})
+    MAX_UNITS = 150.0
+    try:
+        # 读取当前分类与现金类别ID
+        with get_conn() as conn:
+            all_rows = conn.execute("SELECT id, name, sub_name, target_units FROM category").fetchall()
+            cur = {r["id"]: {"id": r["id"], "name": r["name"], "sub_name": r["sub_name"], "target_units": float(r["target_units"] or 0.0)} for r in all_rows}
+
+            # 应用请求内的修改得到“期望的”目标份数字典
+            desired = {cid: {**row} for cid, row in cur.items()}
+            for it in body.items:
+                if it.id not in desired:
+                    raise HTTPException(status_code=400, detail=f"category_not_found: {it.id}")
+                if it.sub_name is not None:
+                    desired[it.id]["sub_name"] = it.sub_name
+                if it.target_units is not None:
+                    try:
+                        desired[it.id]["target_units"] = float(it.target_units)
+                    except Exception:
+                        raise HTTPException(status_code=400, detail=f"invalid_target_units: {it.target_units}")
+
+            # 计算合计并剩余
+            total = sum(v.get("target_units", 0.0) for v in desired.values())
+            if total > MAX_UNITS + 1e-8:
+                raise HTTPException(status_code=400, detail=f"total_units_exceed_{MAX_UNITS}")
+            remainder = max(0.0, MAX_UNITS - total)
+
+            # 找到现金类别ID
+            from .services.config_svc import get_config
+            from .repository.instrument_repo import get_one as inst_get_one
+            cfg = get_config()
+            cash_code = cfg.get("cash_ts_code")
+            cash_cat_id = None
+            cash_cat_name = None
+            cash_cat_sub = None
+            if cash_code:
+                inst = inst_get_one(conn, cash_code)
+                if inst is not None:
+                    inst_dict = dict(inst)
+                    if inst_dict.get("category_id") is not None:
+                        cash_cat_id = int(inst_dict["category_id"])
+                        cat_row = conn.execute("SELECT name, sub_name FROM category WHERE id=?", (cash_cat_id,)).fetchone()
+                        if cat_row is not None:
+                            cash_cat_name = cat_row["name"]
+                            cash_cat_sub = cat_row["sub_name"]
+
+            before = {cid: cur[cid] for cid in desired.keys() if cid in cur}
+
+            # 自动把剩余分配到现金类别
+            auto_fill = 0.0
+            if remainder > 1e-8 and cash_cat_id is not None and cash_cat_id in desired:
+                desired[cash_cat_id]["target_units"] = float(desired[cash_cat_id].get("target_units", 0.0)) + remainder
+                auto_fill = remainder
+
+            # 写回变化的记录
+            for cid, row in desired.items():
+                old = cur.get(cid)
+                if not old:
+                    continue
+                changed = False
+                fields = []
+                params = []
+                if row["sub_name"] != old["sub_name"]:
+                    fields.append("sub_name=?"); params.append(row["sub_name"]); changed = True
+                if abs(float(row["target_units"]) - float(old["target_units"])) > 1e-9:
+                    fields.append("target_units=?"); params.append(float(row["target_units"])); changed = True
+                if changed:
+                    params.append(cid)
+                    sql = f"UPDATE category SET {', '.join(fields)} WHERE id=?"
+                    conn.execute(sql, params)
+            conn.commit()
+
+            # 读取 after 快照
+            all_rows2 = conn.execute("SELECT id, name, sub_name, target_units FROM category").fetchall()
+            after = {r["id"]: {"id": r["id"], "name": r["name"], "sub_name": r["sub_name"], "target_units": float(r["target_units"] or 0.0)} for r in all_rows2}
+
+        log.set_before(before)
+        log.set_after({"auto_fill": auto_fill, "cash_category": {"id": cash_cat_id, "name": cash_cat_name, "sub_name": cash_cat_sub} if cash_cat_id is not None else None, "after": after})
+        log.write("OK")
+        return {
+            "message": "ok",
+            "auto_fill": auto_fill,
+            "total": sum(v.get("target_units", 0.0) for v in after.values()),
+            "cash_category": ({"id": cash_cat_id, "name": cash_cat_name, "sub_name": cash_cat_sub} if cash_cat_id is not None else None)
+        }
+    except HTTPException:
+        log.write("ERROR", "bad_request")
+        raise
     except Exception as e:
         log.write("ERROR", str(e))
         raise HTTPException(status_code=500, detail=str(e))

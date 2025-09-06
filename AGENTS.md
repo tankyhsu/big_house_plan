@@ -1,39 +1,97 @@
-# Repository Guidelines
+# CLAUDE.md
 
-## Project Structure & Module Organization
-- `backend/`: FastAPI app. Key files: `api.py` (routes), `services/` (business logic), `db.py` (SQLite access), `logs.py` (logging), `data/` (runtime files).
-- `frontend/`: React + Vite + TypeScript. Key dirs: `src/pages`, `src/components`, `src/services`.
-- `scripts/`: Dev helpers (`dev.sh`, `dev-fast.sh`).
-- `seeds/`: CSV seed data. `schema.sql`: DB schema.
-- Config: `config.yaml` (auto-created). Frontend env: `frontend/.env`.
+This file provides guidance to Codex when working with code in this repository.
 
-## Build, Test, and Development Commands
-- Start both (installs if needed): `bash scripts/dev.sh`
-- Fast start (skip installs): `bash scripts/dev-fast.sh`
-- Manual backend: `uvicorn backend.api:app --reload --port 8000`
-- Manual frontend: `cd frontend && npm run dev`
-- Frontend build/preview: `npm run build` / `npm run preview`
-- Lint (frontend): `npm run lint`
+## Development Commands
 
-## Coding Style & Naming Conventions
-- Python: 4‑space indent, snake_case for functions/vars, PascalCase for classes. Keep route handlers thin; put logic in `services/`. Use `logs.py` instead of ad‑hoc prints.
-- TypeScript/React: PascalCase components (`PositionTable.tsx`), camelCase hooks/utils, colocate view code under `src/pages`. Prefer function components with hooks.
-- ESLint is configured for the frontend; fix issues before pushing.
+### Quick Start
+```bash
+# Full setup with dependency installation
+bash scripts/dev.sh
 
-## Testing Guidelines
-- No formal test suite yet. Recommended:
-  - Backend: `pytest` under `backend/tests/` (e.g., `test_positions.py`), focusing on `services/` and API contracts.
-  - Frontend: Vitest + React Testing Library with `*.test.tsx` under `frontend/src/`.
-- Keep tests fast and deterministic; aim for meaningful coverage of critical flows.
+# Quick start (assumes dependencies already installed)
+bash scripts/dev-fast.sh
+```
 
-## Commit & Pull Request Guidelines
-- Commits: short, imperative subject (English or Chinese), scope when useful (e.g., `backend: fix snapshot calc`). Reference issues if applicable.
-- PRs: clear description, linked issues, screenshots/GIFs for UI changes, steps to verify, and any schema/config changes noted. Keep PRs focused and pass lints/build.
+### Backend (Python/FastAPI)
+```bash
+# Manual backend setup
+python -m venv .venv
+source .venv/bin/activate  # Windows Git Bash: source .venv/Scripts/activate
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+uvicorn backend.api:app --reload --port 8000
 
-## Security & Configuration Tips
-- Do not commit secrets. Keep tokens (e.g., `tushare_token`) only in local `config.yaml`. Frontend API base lives in `frontend/.env` via `VITE_API_BASE`.
-- Configure DB path via `config.yaml` (`db_path: ./backend/data/portfolio.db`). Avoid committing local DB artifacts.
+# Run tests
+pytest  # Run from project root
 
-## Architecture Overview
-- Backend: FastAPI REST over SQLite (`db.py`), centralized logging, service‑oriented modules.
-- Frontend: Vite + React + TS, talks to backend via `VITE_API_BASE`.
+# Test specific file
+pytest backend/tests/test_calc_smoke.py
+```
+
+### Frontend (React/TypeScript)
+```bash
+cd frontend
+
+# Install dependencies  
+npm i
+
+# Development server
+npm run dev
+
+# Build
+npm run build
+
+# Lint
+npm run lint
+```
+
+### Configuration
+- First run generates `config.yaml` with default settings
+- Frontend uses `frontend/.env` with `VITE_API_BASE=http://127.0.0.1:8000`
+- TuShare token configuration in config.yaml enables price synchronization
+
+## Architecture
+
+This is a **portfolio management system** with FastAPI backend and React frontend.
+
+### Core Components
+
+**Backend (`backend/`)**
+- `api.py` - FastAPI routes grouped by functional domain
+- `services/` - Business logic layer:
+  - `calc_svc.py` - Portfolio calculations and rebalancing logic
+  - `pricing_svc.py` - Price synchronization via TuShare API
+  - `dashboard_svc.py` - Dashboard aggregations and KPIs
+  - `txn_svc.py` - Transaction processing
+  - `position_svc.py` - Position management
+- `repository/` - Data access layer with SQLite operations
+- `domain/txn_engine.py` - Core transaction engine with position calculations
+- `providers/tushare_provider.py` - External price data integration
+
+**Frontend (`frontend/src/`)**
+- `pages/` - Main application views (Dashboard, Review, Transaction entry, Settings)
+- `components/charts/` - ECharts-based visualizations including candlestick charts
+- `api/` - Type-safe API client and React Query hooks
+
+### Key Data Flow
+1. Transactions → Position calculations via transaction engine → Portfolio snapshots
+2. Price sync from TuShare → Daily recalculation of all metrics
+3. All write operations trigger automatic recalculation for affected trading dates
+
+### Database Design
+- SQLite with schema defined in `schema.sql`
+- Key tables: instruments, categories, positions, transactions, portfolio (daily snapshots)
+- Seeds data in `seeds/` directory (categories.csv, instruments.csv)
+
+### Configuration & Environment
+- `config.yaml` - Main configuration (database path, trading parameters, TuShare token)
+- Environment variable `PORT_DB_PATH` can override database location
+- Test mode uses `test_db_path` configuration
+
+## Testing
+
+- Backend tests in `backend/tests/` using pytest
+- Run `pytest` from project root
+- Tests include transaction engine, calculation services, and API integration
+- Frontend linting available via `npm run lint`

@@ -1,5 +1,5 @@
 import client from "./client";
-import type { DashboardResp, CategoryRow, PositionRow, SignalRow, TxnCreate, PositionStatus, KlineConfig } from "./types";
+import type { DashboardResp, CategoryRow, PositionRow, SignalRow, TxnCreate, PositionStatus, KlineConfig, WatchlistItem } from "./types";
 
 export async function fetchDashboard(date: string): Promise<DashboardResp> {
   const { data } = await client.get("/api/dashboard", { params: { date } });
@@ -131,6 +131,25 @@ export async function fetchLastPrice(ts_code: string, ymd?: string): Promise<{ t
 export async function fetchCategories(): Promise<CategoryLite[]> {
   const { data } = await client.get("/api/category/list");
   return data;
+}
+
+export async function createCategory(payload: { name: string; sub_name?: string; target_units: number }) {
+  const { data } = await client.post("/api/category/create", {
+    name: payload.name,
+    sub_name: payload.sub_name ?? "",
+    target_units: payload.target_units,
+  });
+  return data as { message: string; id: number };
+}
+
+export async function updateCategory(payload: { id: number; sub_name?: string; target_units?: number }) {
+  const { data } = await client.post("/api/category/update", payload);
+  return data as { message: string; category: CategoryLite };
+}
+
+export async function updateCategoriesBulk(items: { id: number; sub_name?: string; target_units?: number }[]) {
+  const { data } = await client.post("/api/category/bulk-update", { items });
+  return data as { message: string; auto_fill: number; total: number; cash_category?: { id: number; name: string; sub_name?: string | null } | null };
 }
 
 export async function createInstrument(payload: { ts_code: string; name: string; category_id: number; active?: boolean; type?: string }) {
@@ -267,6 +286,24 @@ export async function fetchKlineConfig(ts_code: string, date: string): Promise<K
     console.warn('Failed to fetch kline config:', error);
     return null;
   }
+}
+
+// 自选关注 Watchlist APIs
+export async function fetchWatchlist(date?: string): Promise<WatchlistItem[]> {
+  const params: any = {};
+  if (date) params.date = date;
+  const { data } = await client.get("/api/watchlist", { params });
+  return (data?.items || []) as WatchlistItem[];
+}
+
+export async function addWatchlist(ts_code: string, note?: string) {
+  const { data } = await client.post("/api/watchlist/add", { ts_code, note });
+  return data as { message: string };
+}
+
+export async function removeWatchlist(ts_code: string) {
+  const { data } = await client.post("/api/watchlist/remove", { ts_code });
+  return data as { message: string };
 }
 
 // 新增：结构信号相关接口

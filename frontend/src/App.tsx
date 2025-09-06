@@ -9,6 +9,7 @@ import { Link, Route, Routes, useLocation } from "react-router-dom";
 import SettingsPage from "./pages/Settings";
 import ReviewPage from "./pages/Review";
 import SignalsPage from "./pages/Signals";
+import WatchlistPage from "./pages/Watchlist";
 import { SettingOutlined, AlertOutlined } from "@ant-design/icons";
 
 const { Header, Content, Footer } = Layout;
@@ -17,6 +18,7 @@ function TopNav() {
   const location = useLocation();
   const selectedKeys =
     (location.pathname.startsWith("/positions") || location.pathname.startsWith("/instrument")) ? ["positions"] :
+    location.pathname.startsWith("/watchlist") ? ["watchlist"] :
     location.pathname.startsWith("/txn") ? ["txn"] :
     location.pathname.startsWith("/review") ? ["review"] :
     location.pathname.startsWith("/signals") ? ["signals"] :
@@ -35,6 +37,7 @@ function TopNav() {
           { key: "review", label: <Link to="/review">复盘分析</Link> },
           { key: "signals", icon: <AlertOutlined />, label: <Link to="/signals">交易信号</Link> },
           { key: "positions", label: <Link to="/positions">持仓编辑</Link> },
+          { key: "watchlist", label: <Link to="/watchlist">自选关注</Link> },
           { key: "txn", label: <Link to="/txn">交易记录</Link> },
           { key: "settings", icon: <SettingOutlined />, label:  <Link to="/settings">系统设置</Link> }
         ]}
@@ -56,6 +59,7 @@ export default function App() {
             <Route path="/signals" element={<SignalsPage />} />
             <Route path="/positions" element={<PositionEditor />} />
             <Route path="/instrument/:ts_code" element={<InstrumentDetail />} />
+            <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/txn" element={<TxnPage />} />
             <Route path="/settings" element={<SettingsPage />} />  
             <Route path="*" element={<Dashboard />} />
