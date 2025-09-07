@@ -2,8 +2,10 @@
 信号业务服务层
 负责信号相关的业务逻辑，包括信号查询、创建、历史信号生成等
 """
+from __future__ import annotations
 
-from typing import Optional, List, Dict, Any, Tuple
+
+from typing import Any
 from ..db import get_conn
 from ..repository import signal_repo
 from .utils import yyyyMMdd_to_dash
@@ -13,8 +15,8 @@ class SignalService:
     """信号业务服务"""
 
     @staticmethod
-    def get_signals_by_date(date_yyyymmdd: str, signal_type: Optional[str] = None, 
-                           ts_code: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_signals_by_date(date_yyyymmdd: str, signal_type: str | None = None, 
+                           ts_code: str | None = None) -> list[dict[str, Any]]:
         """
         获取指定日期的信号记录
         
@@ -43,9 +45,9 @@ class SignalService:
                 return signal_repo.get_signals_by_date(conn, trade_date, signal_type)
 
     @staticmethod
-    def get_signals_history(signal_type: Optional[str] = None, ts_code: Optional[str] = None,
-                           start_date: Optional[str] = None, end_date: Optional[str] = None, 
-                           limit: int = 100) -> List[Dict[str, Any]]:
+    def get_signals_history(signal_type: str | None = None, ts_code: str | None = None,
+                           start_date: str | None = None, end_date: str | None = None, 
+                           limit: int = 100) -> list[dict[str, Any]]:
         """
         获取历史信号记录
         
@@ -65,9 +67,9 @@ class SignalService:
             )
 
     @staticmethod
-    def create_manual_signal(trade_date: str, ts_code: Optional[str] = None,
-                           category_id: Optional[int] = None, scope_type: str = 'INSTRUMENT',
-                           scope_data: Optional[List[str]] = None, level: str = 'INFO',
+    def create_manual_signal(trade_date: str, ts_code: str | None = None,
+                           category_id: int | None = None, scope_type: str = 'INSTRUMENT',
+                           scope_data: list[str] | None = None, level: str = 'INFO',
                            signal_type: str = 'INFO', message: str = '') -> int:
         """
         创建手动信号
@@ -103,8 +105,8 @@ class SignalService:
             return signal_id
 
     @staticmethod
-    def _validate_signal_params(conn, scope_type: str, scope_data: Optional[List[str]],
-                               ts_code: Optional[str], category_id: Optional[int]):
+    def _validate_signal_params(conn, scope_type: str, scope_data: list[str] | None,
+                               ts_code: str | None, category_id: int | None):
         """
         验证信号创建参数
         
@@ -153,7 +155,7 @@ class SignalService:
                 raise ValueError(f"类别ID {','.join(map(str, invalid_ids))} 不存在")
 
     @staticmethod
-    def get_signal_counts_by_date(trade_date: str) -> Dict[str, int]:
+    def get_signal_counts_by_date(trade_date: str) -> dict[str, int]:
         """
         获取指定日期各类型信号的统计数量
         
@@ -195,7 +197,7 @@ class SignalGenerationService:
             print(f"生成结构信号时发生错误: {str(e)}")
     
     @staticmethod
-    def rebuild_structure_signals_for_period(start_date: str, end_date: str) -> Dict[str, Any]:
+    def rebuild_structure_signals_for_period(start_date: str, end_date: str) -> dict[str, Any]:
         """
         重建指定时间段内的结构信号
         
@@ -245,7 +247,7 @@ class TdxStructureSignalGenerator:
     """通达信结构信号生成器 - 九转买入/九转卖出判断"""
     
     @staticmethod
-    def calculate_structure_signals(ts_code: str, trade_date: str) -> Tuple[bool, bool]:
+    def calculate_structure_signals(ts_code: str, trade_date: str) -> tuple[bool, bool]:
         """
         计算某个标的在指定日期的九转买入/九转卖出信号
         
@@ -282,7 +284,7 @@ class TdxStructureSignalGenerator:
             return buy_signal, sell_signal
     
     @staticmethod
-    def _calculate_buy_structure(closes: List[float]) -> bool:
+    def _calculate_buy_structure(closes: list[float]) -> bool:
         """
         计算九转买入信号
         通达信公式逻辑:
@@ -343,7 +345,7 @@ class TdxStructureSignalGenerator:
         return False
     
     @staticmethod
-    def _calculate_sell_structure(closes: List[float]) -> bool:
+    def _calculate_sell_structure(closes: list[float]) -> bool:
         """
         计算九转卖出信号
         通达信公式逻辑:
@@ -404,7 +406,7 @@ class TdxStructureSignalGenerator:
         return False
 
     @staticmethod
-    def generate_structure_signals_for_date(trade_date: str) -> Tuple[int, List[str]]:
+    def generate_structure_signals_for_date(trade_date: str) -> tuple[int, list[str]]:
         """
         为指定日期生成所有标的的结构信号
         
@@ -467,7 +469,7 @@ class TdxZigSignalGenerator:
     """通达信ZIG信号生成器 - 基于之字转向指标的买入/卖出信号判断"""
     
     @staticmethod
-    def calculate_zig_indicator(closes: List[float], turn_percent: float = 10.0) -> List[float]:
+    def calculate_zig_indicator(closes: list[float], turn_percent: float = 10.0) -> list[float]:
         """
         TODO: 此ZIG算法需要继续优化，当前准确率84.6%
         - 通达信ZIG是"未来函数"，会根据未来价格变化修改历史值
@@ -600,7 +602,7 @@ class TdxZigSignalGenerator:
         return result
     
     @staticmethod
-    def detect_zig_signals(zig_values: List[float]) -> Tuple[bool, bool]:
+    def detect_zig_signals(zig_values: list[float]) -> tuple[bool, bool]:
         """
         检测ZIG信号的买入/卖出点
         
@@ -636,7 +638,7 @@ class TdxZigSignalGenerator:
         return buy_signal, sell_signal
     
     @staticmethod
-    def calculate_zig_signals(ts_code: str, trade_date: str) -> Tuple[bool, bool]:
+    def calculate_zig_signals(ts_code: str, trade_date: str) -> tuple[bool, bool]:
         """
         计算某个标的在指定日期的ZIG买入/卖出信号
         
@@ -673,7 +675,7 @@ class TdxZigSignalGenerator:
             return buy_signal, sell_signal
     
     @staticmethod
-    def generate_zig_signals_for_date(trade_date: str) -> Tuple[int, List[str]]:
+    def generate_zig_signals_for_date(trade_date: str) -> tuple[int, list[str]]:
         """
         为指定日期生成所有标的的ZIG信号
         
@@ -745,8 +747,8 @@ class TdxZigSignalGenerator:
             return signal_count, signal_instruments
 
     @staticmethod
-    def generate_zig_signals_for_date_with_guard(trade_date: str, min_delete_date: Optional[str] = None,
-                                                 ts_codes: Optional[List[str]] = None) -> Tuple[int, List[str]]:
+    def generate_zig_signals_for_date_with_guard(trade_date: str, min_delete_date: str | None = None,
+                                                 ts_codes: list[str] | None = None) -> tuple[int, list[str]]:
         """
         与 generate_zig_signals_for_date 类似，但在执行“同类连发删除上一条”时，
         仅当上一条信号日期在 min_delete_date 及之后才允许删除，避免跨越重建区间边界。
@@ -777,7 +779,7 @@ class TdxZigSignalGenerator:
                 ).fetchall()
 
             signal_count = 0
-            signal_instruments: List[str] = []
+            signal_instruments: list[str] = []
 
             for (ts_code,) in instruments:
                 buy_signal, sell_signal = TdxZigSignalGenerator.calculate_zig_signals(ts_code, trade_date)
@@ -828,7 +830,7 @@ class TdxZigSignalGenerator:
             return signal_count, signal_instruments
 
     @staticmethod
-    def rebuild_zig_signals_for_period(start_date: str, end_date: str, ts_codes: Optional[List[str]] = None) -> Dict[str, Any]:
+    def rebuild_zig_signals_for_period(start_date: str, end_date: str, ts_codes: list[str] | None = None) -> dict[str, Any]:
         """
         重建指定时间段内的 ZIG 信号：
         1) 删除区间内（且可选限定标的）的 ZIG_BUY / ZIG_SELL
@@ -846,7 +848,7 @@ class TdxZigSignalGenerator:
         from ..repository import signal_repo
 
         with get_conn() as conn:
-            params: List[Any] = [start_date, end_date]
+            params: list[Any] = [start_date, end_date]
             where = "trade_date BETWEEN ? AND ? AND type IN ('ZIG_BUY','ZIG_SELL')"
             if ts_codes:
                 placeholders = ",".join(["?"] * len(ts_codes))
@@ -1011,7 +1013,7 @@ class TdxZigSignalGenerator:
             return result
 
     @staticmethod
-    def validate_against_tdx_data(ts_code: str, expected_buy_dates: List[str], expected_sell_dates: List[str]) -> dict:
+    def validate_against_tdx_data(ts_code: str, expected_buy_dates: list[str], expected_sell_dates: list[str]) -> dict:
         """
         验证我们的ZIG算法与通达信数据的一致性
         
@@ -1111,7 +1113,7 @@ class TdxZigSignalGenerator:
         return comparison
 
     @staticmethod  
-    def cleanup_and_regenerate_zig_signals(trade_date: str, ts_codes: Optional[List[str]] = None) -> dict:
+    def cleanup_and_regenerate_zig_signals(trade_date: str, ts_codes: list[str] | None = None) -> dict:
         """
         清理并重新生成ZIG信号 - 用于价格更新后的信号维护
         
@@ -1314,20 +1316,20 @@ class TdxZigSignalGenerator:
 
 
 # 向后兼容的函数别名
-def list_signal(date_yyyymmdd: str, typ: Optional[str] = None, ts_code: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_signal(date_yyyymmdd: str, typ: str | None = None, ts_code: str | None = None) -> list[dict[str, Any]]:
     """向后兼容的信号列表函数"""
     return SignalService.get_signals_by_date(date_yyyymmdd, typ, ts_code)
 
 
-def list_signal_all(typ: Optional[str] = None, ts_code: Optional[str] = None,
-                   start_date: Optional[str] = None, end_date: Optional[str] = None, 
-                   limit: int = 100) -> List[Dict[str, Any]]:
+def list_signal_all(typ: str | None = None, ts_code: str | None = None,
+                   start_date: str | None = None, end_date: str | None = None, 
+                   limit: int = 100) -> list[dict[str, Any]]:
     """向后兼容的历史信号列表函数"""
     return SignalService.get_signals_history(typ, ts_code, start_date, end_date, limit)
 
 
-def create_manual_signal_extended(trade_date: str, ts_code: Optional[str], category_id: Optional[int], 
-                                 scope_type: str, scope_data: Optional[List[str]], level: str, 
+def create_manual_signal_extended(trade_date: str, ts_code: str | None, category_id: int | None, 
+                                 scope_type: str, scope_data: list[str] | None, level: str, 
                                  type: str, message: str) -> int:
     """向后兼容的扩展信号创建函数"""
     return SignalService.create_manual_signal(
@@ -1335,7 +1337,7 @@ def create_manual_signal_extended(trade_date: str, ts_code: Optional[str], categ
     )
 
 
-def rebuild_all_historical_signals() -> Dict[str, Any]:
+def rebuild_all_historical_signals() -> dict[str, Any]:
     """向后兼容的历史信号重建函数 - 功能已移除"""
     # 这个函数已不再需要，因为我们移除了止盈止损信号生成逻辑
     # 结构信号和ZIG信号通过其他专门的函数生成

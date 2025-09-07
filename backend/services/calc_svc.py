@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # backend/services/calc_svc.py
 import pandas as pd
 from ..db import get_conn

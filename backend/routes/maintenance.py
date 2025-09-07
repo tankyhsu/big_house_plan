@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import Response
 

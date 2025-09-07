@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import json, time, uuid, datetime as dt
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any
 from .db import get_conn
 
 DDL = """
@@ -47,7 +49,7 @@ class LogContext:
     def set_after(self, obj): self.after = obj
     def set_payload(self, obj): self.payload = obj
 
-    def write(self, result: str = "OK", err: Optional[str] = None):
+    def write(self, result: str = "OK", err: str | None = None):
         elapsed_ms = int((time.perf_counter() - self.start) * 1000)
         rec = {
             "ts": dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).isoformat(),
@@ -72,7 +74,7 @@ class LogContext:
             )
             conn.commit()
 
-def search_logs(q: Optional[str], action: Optional[str], ts_from: Optional[str], ts_to: Optional[str], page:int, size:int):
+def search_logs(q: str | None, action: str | None, ts_from: str | None, ts_to: str | None, page:int, size:int):
     where = []
     params = {}
     if q:

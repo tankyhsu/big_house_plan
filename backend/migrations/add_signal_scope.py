@@ -2,6 +2,8 @@
 """
 Migration: Add scope_type and scope_data to signal table for extended scope support
 """
+from __future__ import annotations
+
 
 import sqlite3
 

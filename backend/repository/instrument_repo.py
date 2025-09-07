@@ -1,4 +1,6 @@
-from typing import Dict, Iterable, Optional
+from __future__ import annotations
+
+from typing import Iterable
 from sqlite3 import Connection
 
 
@@ -7,27 +9,27 @@ def get_type(conn: Connection, ts_code: str) -> str:
     return (row["t"] or "") if row else ""
 
 
-def name_map_for(conn: Connection, codes: Iterable[str]) -> Dict[str, str]:
+def name_map_for(conn: Connection, codes: Iterable[str]) -> dict[str, str]:
     codes = list(codes)
     if not codes:
         return {}
     q = "SELECT ts_code, name FROM instrument WHERE ts_code IN ({})".format(
         ",".join(["?"] * len(codes))
     )
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for r in conn.execute(q, codes).fetchall():
         out[r["ts_code"]] = r["name"]
     return out
 
 
-def type_map_for(conn: Connection, codes: Iterable[str]) -> Dict[str, str]:
+def type_map_for(conn: Connection, codes: Iterable[str]) -> dict[str, str]:
     codes = list(codes)
     if not codes:
         return {}
     q = "SELECT ts_code, COALESCE(type,'') AS t FROM instrument WHERE ts_code IN ({})".format(
         ",".join(["?"] * len(codes))
     )
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for r in conn.execute(q, codes).fetchall():
         out[r["ts_code"]] = (r["t"] or "")
     return out
@@ -40,7 +42,7 @@ def upsert_instrument(conn: Connection, ts_code: str, name: str, sec_type: str, 
     )
 
 
-def list_instruments(conn: Connection, q: Optional[str], active_only: bool):
+def list_instruments(conn: Connection, q: str | None, active_only: bool):
     sql = """
     SELECT i.ts_code, i.name, i.active, i.category_id, i.type,
            c.name AS cat_name, c.sub_name AS cat_sub

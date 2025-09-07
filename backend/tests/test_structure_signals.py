@@ -1,6 +1,8 @@
 """
 测试通达信结构信号功能
 """
+from __future__ import annotations
+
 import pytest
 from unittest.mock import patch, MagicMock
 from backend.services.signal_svc import TdxStructureSignalGenerator

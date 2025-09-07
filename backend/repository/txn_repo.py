@@ -1,4 +1,5 @@
-from typing import List, Optional
+from __future__ import annotations
+
 from sqlite3 import Connection
 
 
@@ -8,11 +9,11 @@ def insert_txn(
     trade_date: str,
     action: str,
     shares: float,
-    price: Optional[float],
-    amount: Optional[float],
-    fee: Optional[float],
-    notes: Optional[str],
-    group_id: Optional[int] = None,
+    price: float | None,
+    amount: float | None,
+    fee: float | None,
+    notes: str | None,
+    group_id: int | None = None,
 ) -> int:
     cur = conn.execute(
         "INSERT INTO txn(ts_code, trade_date, action, shares, price, amount, fee, notes, group_id) "

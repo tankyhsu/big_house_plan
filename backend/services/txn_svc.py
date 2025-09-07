@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 from ..db import get_conn
 from ..logs import LogContext
 from .config_svc import get_config
 from ..domain.txn_engine import compute_position_after_trade, compute_cash_mirror, round_price, round_quantity, round_shares, round_amount
 from ..repository import txn_repo, position_repo, instrument_repo
-from typing import List, Tuple, Dict
 
 def _ensure_txn_group_id():
     """确保 txn 表存在 group_id 列（用于将原始与现金镜像交易分组）。"""
@@ -19,7 +20,7 @@ def _ensure_txn_group_id():
         # 下次调用会再次尝试。
         pass
 
-def list_txn(page:int, size:int) -> Tuple[int, List[dict]]:
+def list_txn(page:int, size:int) -> tuple[int, list[dict]]:
     """分页查询交易流水，并补充：
     - name: instrument.name
     - realized_pnl: 仅 SELL 行计算 = qty * (price - avg_cost_at_that_time) - fee
@@ -36,10 +37,10 @@ def list_txn(page:int, size:int) -> Tuple[int, List[dict]]:
 
         # 准备名称映射
         codes = sorted(list({r["ts_code"] for r in items}))
-        name_map: Dict[str, str] = instrument_repo.name_map_for(conn, codes)
+        name_map: dict[str, str] = instrument_repo.name_map_for(conn, codes)
 
         # 计算每个 SELL 交易的 realized PnL，构建 id->pnl 映射
-        pnl_map: Dict[int, float] = {}
+        pnl_map: dict[int, float] = {}
         for code in codes:
             # 拉该代码的全历史交易，按时间顺序
             hist = txn_repo.list_txns_for_code_ordered(conn, code)

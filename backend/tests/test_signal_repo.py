@@ -2,6 +2,8 @@
 信号仓储层测试
 测试 signal_repo.py 中的所有数据访问功能
 """
+from __future__ import annotations
+
 
 import pytest
 from backend.db import get_conn

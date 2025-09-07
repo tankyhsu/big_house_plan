@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 # backend/services/position_svc.py
-from typing import Optional, List, Dict, Any
+from typing import Any
 from ..db import get_conn
 from ..logs import LogContext
 from ..repository import position_repo
@@ -10,7 +12,7 @@ def list_positions_raw(include_zero: bool = True) -> list[dict]:
         rows = position_repo.list_positions_raw(conn, include_zero)
         return [dict(r) for r in rows]
 
-def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str, log: LogContext, opening_date: Optional[str] = None):
+def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str, log: LogContext, opening_date: str | None = None):
     od = opening_date or date  # 默认与最后更新一致
     with get_conn() as conn:
         before = position_repo.get_position_full(conn, ts_code)
@@ -24,7 +26,7 @@ def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str
     log.set_after(after)
     return after
 
-def update_position_one(ts_code: str, shares: Optional[float], avg_cost: Optional[float], date: str, log: LogContext, opening_date: Optional[str] = None):
+def update_position_one(ts_code: str, shares: float | None, avg_cost: float | None, date: str, log: LogContext, opening_date: str | None = None):
     with get_conn() as conn:
         before = conn.execute("SELECT ts_code, shares, avg_cost, opening_date FROM position WHERE ts_code=?", (ts_code,)).fetchone()
         if before: before = dict(before)

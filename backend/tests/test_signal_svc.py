@@ -2,10 +2,12 @@
 信号业务服务层测试
 测试 signal_svc.py 中的所有业务逻辑功能
 """
+from __future__ import annotations
+
 
 import pytest
 import pandas as pd
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from backend.db import get_conn
 from backend.services.signal_svc import SignalService, SignalGenerationService
 
@@ -251,45 +253,6 @@ class TestSignalGenerationService:
                 VALUES ('000001.SZ', 1000, 10.0, '2024-01-01')
             """)
             conn.commit()
-    
-    @patch('backend.services.config_svc.get_config')
-    def test_rebuild_all_historical_signals(self, mock_get_config):
-        """测试重建所有历史信号"""
-        # Mock配置
-        mock_get_config.return_value = {
-            'stop_gain_pct': 20,
-            'stop_loss_pct': 10
-        }
-        
-        with get_conn() as conn:
-            # 添加另一个持仓
-            conn.execute("""
-                INSERT INTO position (ts_code, shares, avg_cost, opening_date) 
-                VALUES ('000002.SZ', 500, 20.0, '2024-01-01')
-            """)
-            
-            # 添加价格数据
-            conn.execute("""
-                INSERT INTO price_eod (ts_code, trade_date, close) 
-                VALUES ('000001.SZ', '2024-01-02', 13.0)
-            """)  # 触发止盈
-            conn.execute("""
-                INSERT INTO price_eod (ts_code, trade_date, close) 
-                VALUES ('000002.SZ', '2024-01-02', 17.0)  
-            """)  # 触发止损
-            conn.commit()
-        
-        result = SignalGenerationService.rebuild_all_historical_signals()
-        
-        assert result["count"] >= 2  # 至少生成2个信号
-        assert "date_range" in result
-        
-        # 验证旧信号被清除，新信号被创建
-        with get_conn() as conn:
-            signals = conn.execute("SELECT * FROM signal").fetchall()
-            signal_types = [s["type"] for s in signals]
-            assert "STOP_GAIN" in signal_types
-            assert "STOP_LOSS" in signal_types
     
     def test_generate_current_signals(self):
         """测试生成当前信号 - 止盈止损功能已移除"""

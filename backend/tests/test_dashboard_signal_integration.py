@@ -2,6 +2,8 @@
 Dashboard服务信号功能集成测试
 测试 dashboard_svc.py 中的信号相关功能，确保重构后的向后兼容性
 """
+from __future__ import annotations
+
 
 import pytest
 from backend.db import get_conn

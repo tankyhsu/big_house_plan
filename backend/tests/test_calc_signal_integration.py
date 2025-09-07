@@ -2,6 +2,8 @@
 计算服务信号生成集成测试
 测试 calc_svc.py 中的信号生成功能集成到新架构后的正确性
 """
+from __future__ import annotations
+
 
 import pytest
 import pandas as pd
@@ -92,34 +94,6 @@ class TestCalcSignalIntegration:
             # 由于避免重复逻辑，首次运行应该生成信号
             assert len(gain_signals) >= 0  # 可能因为历史检查而不生成
             assert len(loss_signals) >= 0  # 可能因为历史检查而不生成
-    
-    @patch('backend.services.calc_svc.get_config')
-    def test_rebuild_all_historical_signals_integration(self, mock_get_config):
-        """测试重建历史信号的集成功能"""
-        # Mock配置
-        mock_get_config.return_value = {
-            'stop_gain_pct': 20,
-            'stop_loss_pct': 10
-        }
-        
-        # 执行重建历史信号
-        result = calc_svc.rebuild_all_historical_signals()
-        
-        # 验证返回结果格式
-        assert isinstance(result, dict)
-        assert "count" in result
-        assert "date_range" in result
-        assert isinstance(result["count"], int)
-        
-        # 验证信号被创建
-        with get_conn() as conn:
-            signals = conn.execute("SELECT * FROM signal").fetchall()
-            signal_types = [s["type"] for s in signals]
-            
-            # 应该包含止盈或止损信号
-            expected_types = {"STOP_GAIN", "STOP_LOSS"}
-            actual_types = set(signal_types)
-            assert len(actual_types.intersection(expected_types)) > 0
     
     @patch('backend.services.calc_svc.get_config')
     def test_calc_avoids_duplicate_signals(self, mock_get_config):

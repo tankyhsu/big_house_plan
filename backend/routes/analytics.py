@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, Query
 
 from ..services.analytics_svc import compute_position_xirr, compute_position_xirr_batch

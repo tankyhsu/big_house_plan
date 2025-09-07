@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from backend.domain.txn_engine import compute_position_after_trade, compute_cash_mirror
 
 

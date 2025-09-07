@@ -1,6 +1,8 @@
 """
 测试 Dashboard API 与 PositionStatusService 的集成
 """
+from __future__ import annotations
+
 import unittest
 from unittest.mock import patch, MagicMock
 from backend.services.dashboard_svc import get_dashboard

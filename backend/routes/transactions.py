@@ -1,4 +1,5 @@
-from typing import Optional, List
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -16,10 +17,10 @@ class TxnCreate(BaseModel):
     date: str  # YYYY-MM-DD
     action: str  # BUY/SELL/DIV/FEE/ADJ
     shares: float
-    price: Optional[float] = None
-    amount: Optional[float] = None
-    fee: Optional[float] = None
-    notes: Optional[str] = None
+    price: float | None = None
+    amount: float | None = None
+    fee: float | None = None
+    notes: str | None = None
 
 
 @router.get("/api/txn/list")
@@ -32,7 +33,7 @@ def api_txn_list(page: int = 1, size: int = 20):
 def api_txn_range(
     start: str = Query(..., pattern=r"^\d{8}$"),
     end: str = Query(..., pattern=r"^\d{8}$"),
-    ts_codes: Optional[str] = Query(None, description="逗号分隔，可选：限定标的"),
+    ts_codes: str | None = Query(None, description="逗号分隔，可选：限定标的"),
 ):
     try:
         sd = f"{start[0:4]}-{start[4:6]}-{start[6:8]}"
@@ -92,7 +93,7 @@ def api_txn_create(body: TxnCreate):
 
 
 class BulkTxnReq(BaseModel):
-    items: List[TxnCreate]
+    items: list[TxnCreate]
     recalc: str = "latest"  # none/latest/all
 
 

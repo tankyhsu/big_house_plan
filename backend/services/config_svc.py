@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # backend/services/config_svc.py
 from ..db import get_conn
 from ..logs import LogContext

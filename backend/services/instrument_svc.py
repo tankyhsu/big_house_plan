@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 # backend/services/instrument_svc.py
 from ..db import get_conn
 from ..logs import LogContext
-from typing import Optional
 import pandas as pd
 from ..repository import instrument_repo
 
-def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: LogContext, sec_type: Optional[str] = None):
+def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: LogContext, sec_type: str | None = None):
     """创建/更新标的；sec_type 可为 STOCK | FUND | CASH 。None 时不覆盖既有值。"""
-    def _norm_type(t: Optional[str]) -> str:
+    def _norm_type(t: str | None) -> str:
         t = (t or "").upper().strip()
         if t in ("STOCK", "FUND", "CASH"): 
             return t
@@ -22,7 +23,7 @@ def create_instrument(ts_code: str, name: str, category_id: int, active: bool, l
     log.set_after({"ts_code": ts_code, "name": name, "category_id": category_id, "active": active, "type": final_type})
 
 # ===== Instrument List (for autocomplete) =====
-def list_instruments(q: Optional[str] = None, active_only: bool = True) -> list[dict]:
+def list_instruments(q: str | None = None, active_only: bool = True) -> list[dict]:
     with get_conn() as conn:
         rows = instrument_repo.list_instruments(conn, q, active_only)
         return [dict(r) for r in rows]
@@ -89,12 +90,12 @@ def seed_load(categories_csv: str, instruments_csv: str, log: LogContext) -> dic
     return {"created_category": created_cat, "created_instrument": created_ins}
 
 
-def get_instrument_detail(ts_code: str) -> Optional[dict]:
+def get_instrument_detail(ts_code: str) -> dict | None:
     with get_conn() as conn:
         row = instrument_repo.get_one(conn, ts_code)
         return dict(row) if row else None
 
 
-def edit_instrument(ts_code: str, name: str, category_id: int, active: bool, sec_type: Optional[str], log: LogContext):
+def edit_instrument(ts_code: str, name: str, category_id: int, active: bool, sec_type: str | None, log: LogContext):
     """编辑标的基础信息（等价于 upsert）。"""
     create_instrument(ts_code, name, category_id, active, log, sec_type=sec_type)

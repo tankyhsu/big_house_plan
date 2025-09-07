@@ -9,6 +9,8 @@ Usage:
       --categories seeds/categories.csv \
       --instruments seeds/instruments.csv
 """
+from __future__ import annotations
+
 import argparse
 from backend.db import get_conn
 from backend.logs import LogContext

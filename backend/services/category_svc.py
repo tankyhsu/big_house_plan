@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 from ..db import get_conn
 from ..logs import LogContext
-from typing import Optional
 
 def create_category(name: str, sub_name: str, target_units: float, log: LogContext) -> int:
     with get_conn() as conn:
@@ -22,7 +23,7 @@ def list_categories() -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def update_category(category_id: int, *, sub_name: Optional[str] = None, target_units: Optional[float] = None, log: LogContext) -> dict:
+def update_category(category_id: int, *, sub_name: str | None = None, target_units: float | None = None, log: LogContext) -> dict:
     """
     Update editable fields of a category. Major category `name` is immutable.
     Editable fields: sub_name (2nd level), target_units.

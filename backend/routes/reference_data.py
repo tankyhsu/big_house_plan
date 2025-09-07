@@ -1,4 +1,5 @@
-from typing import Optional, List
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
@@ -30,12 +31,12 @@ class CategoryCreate(BaseModel):
 
 class CategoryUpdateItem(BaseModel):
     id: int
-    sub_name: Optional[str] = None
-    target_units: Optional[float] = None
+    sub_name: str | None = None
+    target_units: float | None = None
 
 
 class CategoryBulkUpdate(BaseModel):
-    items: List[CategoryUpdateItem]
+    items: list[CategoryUpdateItem]
 
 
 class InstrumentCreate(BaseModel):
@@ -43,13 +44,13 @@ class InstrumentCreate(BaseModel):
     name: str
     category_id: int
     active: bool = True
-    type: Optional[str] = None
+    type: str | None = None
 
 
 class InstrumentUpdate(BaseModel):
     ts_code: str
     active: bool
-    type: Optional[str] = None
+    type: str | None = None
 
 
 class InstrumentEdit(BaseModel):
@@ -57,7 +58,7 @@ class InstrumentEdit(BaseModel):
     name: str
     category_id: int
     active: bool = True
-    type: Optional[str] = None
+    type: str | None = None
 
 
 @router.get("/api/category/list")

@@ -1,4 +1,5 @@
-from typing import Optional, List
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, Query, Body
 
 from ..logs import LogContext
@@ -13,10 +14,10 @@ router = APIRouter()
 
 
 class SyncBody:
-    date: Optional[str] = None
+    date: str | None = None
     recalc: bool = False
-    ts_codes: Optional[List[str]] = None
-    days: Optional[int] = None
+    ts_codes: list[str | None] = None
+    days: int | None = None
 
 
 @router.post("/api/sync-prices")
@@ -84,7 +85,7 @@ def api_sync_prices(body: dict = Body(default={})):  # use raw dict for compatib
 
 
 @router.get("/api/price/last")
-def api_price_last(ts_code: str = Query(...), date: Optional[str] = Query(None, pattern=r"^\d{8}$")):
+def api_price_last(ts_code: str = Query(...), date: str | None = Query(None, pattern=r"^\d{8}$")):
     from datetime import datetime as _dt
     try:
         d = date or _dt.now().strftime("%Y%m%d")
@@ -134,7 +135,7 @@ def api_price_ohlc(ts_code: str = Query(...), start: str = Query(..., pattern=r"
 
 
 @router.get("/api/instrument/lookup")
-def api_instrument_lookup(ts_code: str = Query(...), date: Optional[str] = Query(None, pattern=r"^\d{8}$")):
+def api_instrument_lookup(ts_code: str = Query(...), date: str | None = Query(None, pattern=r"^\d{8}$")):
     cfg = get_config()
     token = cfg.get("tushare_token")
     if not token:

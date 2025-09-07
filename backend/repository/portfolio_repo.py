@@ -1,4 +1,5 @@
-from typing import Optional
+from __future__ import annotations
+
 from sqlite3 import Connection
 
 
@@ -23,8 +24,8 @@ def upsert_portfolio_daily(
     market_value: float,
     cost: float,
     unrealized_pnl: float,
-    ret: Optional[float],
-    category_id: Optional[int],
+    ret: float | None,
+    category_id: int | None,
 ):
     """
     插入或更新单个标的的每日投资组合快照
@@ -54,7 +55,7 @@ def upsert_category_daily(
     market_value: float,
     cost: float,
     pnl: float,
-    ret: Optional[float],
+    ret: float | None,
     overweight: int,
 ):
     """

@@ -1,4 +1,5 @@
-from typing import Optional, List
+from __future__ import annotations
+
 from ..logs import LogContext
 from .config_svc import get_config
 from ..providers.tushare_provider import TuShareProvider
@@ -7,8 +8,8 @@ from .pricing_orchestrator import sync_prices as orchestrate
 def sync_prices_tushare(
     trade_date: str,
     log: LogContext,
-    ts_codes: Optional[List[str]] = None,
-    fund_rate_per_min: Optional[int] = None,
+    ts_codes: list[str | None] = None,
+    fund_rate_per_min: int | None = None,
 ) -> dict:
     """
     通过 TuShare API 同步指定交易日的价格数据

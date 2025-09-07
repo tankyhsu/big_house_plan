@@ -10,7 +10,6 @@
 from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta
-from typing import Optional
 
 # 允许脚本直接运行
 if __name__ == "__main__" and __package__ is None:
@@ -30,7 +29,7 @@ from backend.services.config_svc import get_config
 
 START_DEFAULT = "20200101"
 
-def _detect_txn_date_col(conn) -> Optional[str]:
+def _detect_txn_date_col(conn) -> str | None:
     """探测 txn 表里用于交易日期的列名（优先级：date > trade_date > txn_date > tx_date）"""
     try:
         rows = conn.execute("PRAGMA table_info(txn)").fetchall()
@@ -159,7 +158,7 @@ def main():
                 filtered_codes = sorted(set(codes))
                 print(f"[backfill] bucket filter {sorted(buckets)} -> codes={len(filtered_codes)}")
 
-    def codes_need_sync(date_yyyymmdd: str, base_codes: Optional[list[str]] = None) -> list[str]:
+    def codes_need_sync(date_yyyymmdd: str, base_codes: list[str | None] = None) -> list[str]:
         """Return codes that do NOT yet have a price row for the date.
         - If base_codes is None, use all active, non-CASH instruments.
         - Checks existence at exact date (not on-or-before).

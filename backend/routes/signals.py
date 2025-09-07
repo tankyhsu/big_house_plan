@@ -1,4 +1,5 @@
-from typing import Optional, List
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 
@@ -9,13 +10,13 @@ router = APIRouter()
 
 class SignalCreate(BaseModel):
     trade_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-    ts_code: Optional[str] = None
-    category_id: Optional[int] = None
+    ts_code: str | None = None
+    category_id: int | None = None
     scope_type: str = Field(
         "INSTRUMENT",
         pattern=r"^(INSTRUMENT|CATEGORY|MULTI_INSTRUMENT|MULTI_CATEGORY|ALL_INSTRUMENTS|ALL_CATEGORIES)$",
     )
-    scope_data: Optional[List[str]] = None
+    scope_data: list[str | None] = None
     level: str = Field(..., pattern=r"^(HIGH|MEDIUM|LOW|INFO)$")
     type: str = Field(...)
     message: str = Field(..., max_length=500)
@@ -46,7 +47,7 @@ def api_signals_current_status(date: str = Query(..., pattern=r"^\d{8}$")):
 
 
 @router.get("/api/positions/status")
-def api_positions_status(date: str = Query(..., pattern=r"^\d{8}$"), ts_code: Optional[str] = Query(None)):
+def api_positions_status(date: str = Query(..., pattern=r"^\d{8}$"), ts_code: str | None = Query(None)):
     from ..services.position_status_svc import PositionStatusService
 
     if ts_code:

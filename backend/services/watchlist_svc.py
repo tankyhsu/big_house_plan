@@ -1,4 +1,6 @@
-from typing import Optional, List, Dict, Any
+from __future__ import annotations
+
+from typing import Any
 from .utils import yyyyMMdd_to_dash
 from ..db import get_conn
 from ..repository import watchlist_repo, price_repo, instrument_repo
@@ -10,7 +12,7 @@ def ensure_watchlist_schema():
         conn.commit()
 
 
-def add_to_watchlist(ts_code: str, note: Optional[str] = None):
+def add_to_watchlist(ts_code: str, note: str | None = None):
     with get_conn() as conn:
         # 确保 instrument 中存在该代码
         row = instrument_repo.get_one(conn, ts_code)
@@ -26,10 +28,10 @@ def remove_from_watchlist(ts_code: str):
         conn.commit()
 
 
-def list_watchlist(with_last_price: bool = True, on_date_yyyymmdd: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_watchlist(with_last_price: bool = True, on_date_yyyymmdd: str | None = None) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = watchlist_repo.list_all(conn)
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         last_date_dash = None
         if with_last_price:
             from datetime import datetime

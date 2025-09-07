@@ -1,6 +1,5 @@
 # backend/services/analytics_svc.py
 from __future__ import annotations
-from typing import List, Optional, Tuple, Dict
 from datetime import datetime, date as dt_date
 from math import isfinite
 
@@ -16,9 +15,9 @@ def _alog(msg: str):
     # Debug logging disabled for production
     pass
 
-def _xirr(cashflows: List[Tuple[str, float]]) -> Optional[float]:
+def _xirr(cashflows: list[tuple[str, float]]) -> float | None:
     # 规范日期并过滤非法记录（容错：YYYY-MM-DD / YYYYMMDD）
-    def _to_dash_date(s: Optional[str]) -> Optional[str]:
+    def _to_dash_date(s: str | None) -> str | None:
         if not s: return None
         s = str(s).strip()
         if len(s) == 10 and s[4] == "-" and s[7] == "-": return s
@@ -31,7 +30,7 @@ def _xirr(cashflows: List[Tuple[str, float]]) -> Optional[float]:
     if not cashflows:
         return None
 
-    norm: List[Tuple[str, float]] = []
+    norm: list[tuple[str, float]] = []
     for d, a in cashflows:
         dd = _to_dash_date(d)
         if dd is not None:
@@ -69,10 +68,10 @@ def _xirr(cashflows: List[Tuple[str, float]]) -> Optional[float]:
     # Algorithm did not converge
     return None
 
-def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> Tuple[List[Tuple[str, float]], Optional[str], Optional[float]]:
-    cfs: List[Tuple[str, float]] = []
-    used_price_date: Optional[str] = None
-    terminal_value: Optional[float] = None
+def _build_cashflows_for_ts(ts_code: str, date_dash: str) -> tuple[list[tuple[str, float]], str | None, float | None]:
+    cfs: list[tuple[str, float]] = []
+    used_price_date: str | None = None
+    terminal_value: float | None = None
 
     with get_conn() as conn:
         txns = txn_repo.list_txns_for_code_upto(conn, ts_code, date_dash)
@@ -224,7 +223,7 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
             "irr_reason": "fallback_error"
         }
 
-def compute_position_xirr_batch(date_yyyymmdd: str, ts_codes: Optional[List[str]] = None) -> List[Dict]:
+def compute_position_xirr_batch(date_yyyymmdd: str, ts_codes: list[str | None] = None) -> list[Dict]:
     d = yyyyMMdd_to_dash(date_yyyymmdd)
     from ..repository.txn_repo import list_txn_codes_distinct
     from ..repository.position_repo import list_position_codes_with_shares
@@ -252,7 +251,7 @@ def compute_position_xirr_batch(date_yyyymmdd: str, ts_codes: Optional[List[str]
                     cash_set.add(r["ts_code"])
 
     # Batch XIRR computation starting
-    out: List[Dict] = []
+    out: list[Dict] = []
     for code in codes:
         if code in cash_set:
             out.append({
@@ -272,7 +271,7 @@ def compute_position_xirr_batch(date_yyyymmdd: str, ts_codes: Optional[List[str]
     # Batch computation completed
     return out
 
-def _to_dash_date(s: Optional[str]) -> Optional[str]:
+def _to_dash_date(s: str | None) -> str | None:
     """把日期字符串规范为 YYYY-MM-DD；支持 YYYY-MM-DD / YYYYMMDD；其它返回 None。"""
     if not s:
         return None

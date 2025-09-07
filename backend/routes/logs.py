@@ -1,4 +1,5 @@
-from typing import Optional
+from __future__ import annotations
+
 from fastapi import APIRouter
 
 from ..logs import search_logs
@@ -10,10 +11,10 @@ router = APIRouter()
 def api_logs_search(
     page: int = 1,
     size: int = 20,
-    action: Optional[str] = None,
-    query: Optional[str] = None,
-    ts_from: Optional[str] = None,
-    ts_to: Optional[str] = None,
+    action: str | None = None,
+    query: str | None = None,
+    ts_from: str | None = None,
+    ts_to: str | None = None,
 ):
     total, items = search_logs(query, action, ts_from, ts_to, page, size)
     return {"total": total, "items": items}

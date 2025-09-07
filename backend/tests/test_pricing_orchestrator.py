@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import pandas as pd
-from typing import Optional
 
 from backend.services.pricing_orchestrator import sync_prices
 from backend.db import get_conn
@@ -31,7 +32,7 @@ class DummyLog:
     def set_after(self, obj):
         self.after = obj
 
-    def write(self, result: str = "OK", err: Optional[str] = None):
+    def write(self, result: str = "OK", err: str | None = None):
         # no-op for tests
         pass
 

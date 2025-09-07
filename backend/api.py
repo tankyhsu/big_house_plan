@@ -2,6 +2,8 @@
 FastAPI app entry point aggregating per-domain routers under backend/routes.
 Keep as `uvicorn backend.api:app`.
 """
+from __future__ import annotations
+
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

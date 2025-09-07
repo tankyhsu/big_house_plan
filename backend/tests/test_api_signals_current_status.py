@@ -1,6 +1,8 @@
 """
 测试新的信号聚合API端点
 """
+from __future__ import annotations
+
 import unittest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient

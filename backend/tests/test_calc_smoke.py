@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 def test_calc_endpoint_runs(client):
     # Without any data it should still succeed
     r = client.post("/api/calc", json={"date": "20250830"})

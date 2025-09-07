@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 from sqlite3 import Connection
-from typing import Optional
 
 
 def ensure_schema(conn: Connection):
@@ -14,7 +15,7 @@ def ensure_schema(conn: Connection):
     )
 
 
-def add(conn: Connection, ts_code: str, note: Optional[str] = None):
+def add(conn: Connection, ts_code: str, note: str | None = None):
     conn.execute(
         "INSERT OR IGNORE INTO watchlist(ts_code, note) VALUES(?, ?)",
         (ts_code, note),

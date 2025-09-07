@@ -1,4 +1,5 @@
-from typing import Optional
+from __future__ import annotations
+
 from sqlite3 import Connection
 
 

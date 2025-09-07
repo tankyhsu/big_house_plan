@@ -1,17 +1,17 @@
 from __future__ import annotations
-from typing import Optional, Tuple, Dict, Any
+from typing import Any
 
 
 class TuShareProvider:
     """Thin wrapper around tushare pro api with simple normalization + optional rate limit for fund endpoints."""
 
-    def __init__(self, token: str, fund_rate_per_min: Optional[int] = None):
+    def __init__(self, token: str, fund_rate_per_min: int | None = None):
         import tushare as ts
         self.pro = ts.pro_api(token)
         import time, random
         
         class _RateLimiter:
-            def __init__(self, max_per_min: Optional[int]):
+            def __init__(self, max_per_min: int | None):
                 self.max = max_per_min if (max_per_min and max_per_min > 0) else None
                 self.window_start = time.time()
                 self.count = 0
@@ -34,12 +34,12 @@ class TuShareProvider:
 
         self._rate = _RateLimiter(fund_rate_per_min)
         # simple in-memory caches
-        self._cache_daily: Dict[str, Any] = {}
-        self._cache_hk_daily: Dict[str, Any] = {}
-        self._cache_trade_is_open: Dict[str, Optional[bool]] = {}
-        self._cache_trade_backfill: Dict[Tuple[str, int], Optional[str]] = {}
-        self._cache_fund_daily: Dict[Tuple[str, str, str], Any] = {}
-        self._cache_fund_nav: Dict[Tuple[str, str, str], Any] = {}
+        self._cache_daily: dict[str, Any] = {}
+        self._cache_hk_daily: dict[str, Any] = {}
+        self._cache_trade_is_open: dict[str, bool | None] = {}
+        self._cache_trade_backfill: dict[tuple[str, int], str | None] = {}
+        self._cache_fund_daily: dict[tuple[str, str, str], Any] = {}
+        self._cache_fund_nav: dict[tuple[str, str, str], Any] = {}
 
         def _retry_call(fn, *args, tries=3, base_sleep=0.5, **kwargs):
             last_err = None
@@ -92,7 +92,7 @@ class TuShareProvider:
             print(f"[tushare_provider] hk_daily window error: {e}")
             return None
 
-    def trade_cal_is_open(self, date_yyyymmdd: str) -> Optional[bool]:
+    def trade_cal_is_open(self, date_yyyymmdd: str) -> bool | None:
         if date_yyyymmdd in self._cache_trade_is_open:
             return self._cache_trade_is_open[date_yyyymmdd]
         try:
@@ -108,7 +108,7 @@ class TuShareProvider:
             self._cache_trade_is_open[date_yyyymmdd] = None
             return None
 
-    def trade_cal_backfill_recent_open(self, end_yyyymmdd: str, lookback_days: int = 30) -> Optional[str]:
+    def trade_cal_backfill_recent_open(self, end_yyyymmdd: str, lookback_days: int = 30) -> str | None:
         from datetime import datetime, timedelta
         key = (end_yyyymmdd, int(lookback_days or 30))
         if key in self._cache_trade_backfill:

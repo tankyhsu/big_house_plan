@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 # backend/db.py
 import sqlite3
 from contextlib import contextmanager
-from typing import Iterator, Optional
+from typing import Iterator
 import os
 import yaml
 
@@ -32,7 +34,7 @@ def _read_config_yaml() -> dict:
         return {}
 
 
-def get_db_path(_: Optional[str] = None) -> str:
+def get_db_path(_: str | None = None) -> str:
     env_path = os.environ.get("PORT_DB_PATH")
     cfg = _read_config_yaml()
     cfg_db = cfg.get("db_path")
@@ -56,7 +58,7 @@ def get_db_path(_: Optional[str] = None) -> str:
 
 
 @contextmanager
-def get_conn(db_path: Optional[str] = None) -> Iterator[sqlite3.Connection]:
+def get_conn(db_path: str | None = None) -> Iterator[sqlite3.Connection]:
     """
     获取 SQLite 连接。优先使用显式传入的 db_path，否则走 get_db_path()。
     打开 foreign_keys，设置 row_factory 为 Row。

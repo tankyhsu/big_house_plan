@@ -1,6 +1,8 @@
 """
 测试 position_status_svc.py 中的所有业务逻辑功能
 """
+from __future__ import annotations
+
 import unittest
 from unittest.mock import patch, MagicMock
 from backend.services.position_status_svc import PositionStatusService

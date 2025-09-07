@@ -1,4 +1,6 @@
-from typing import Optional, Literal
+from __future__ import annotations
+
+from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from ..services.dashboard_svc import (
@@ -39,17 +41,17 @@ def api_position(date: str = Query(..., pattern=r"^\d{8}$")):
 @router.get("/api/signal")
 def api_signal(
     date: str = Query(..., pattern=r"^\d{8}$"),
-    type: Optional[str] = Query(None),
-    ts_code: Optional[str] = Query(None),
+    type: str | None = Query(None),
+    ts_code: str | None = Query(None),
 ):
     return list_signal(date, type, ts_code)
 
 @router.get("/api/signal/all")
 def api_signal_all(
-    type: Optional[str] = Query(None),
-    ts_code: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    type: str | None = Query(None),
+    ts_code: str | None = Query(None),
+    start_date: str | None = Query(None, description="YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="YYYY-MM-DD"),
     limit: int = Query(100, ge=1, le=1000),
 ):
     return list_signal_all(type, ts_code, start_date, end_date, limit)

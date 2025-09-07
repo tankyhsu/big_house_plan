@@ -2,7 +2,9 @@
 持仓状态服务 - 实时计算止盈止损等状态信息
 重构思路：将止盈止损从时间事件转为基于成本的客观计算
 """
-from typing import List, Dict, Optional, Any
+from __future__ import annotations
+
+from typing import Any
 from datetime import datetime
 from ..repository import reporting_repo
 from ..db import get_conn
@@ -13,7 +15,7 @@ class PositionStatusService:
     """持仓状态计算服务"""
     
     @staticmethod
-    def get_current_position_status(date_yyyymmdd: str = None, ts_code: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_current_position_status(date_yyyymmdd: str = None, ts_code: str | None = None) -> list[dict[str, Any]]:
         """
         获取当前持仓的实时状态（止盈/止损/正常）
         
@@ -124,7 +126,7 @@ class PositionStatusService:
             return "NORMAL", f"{ts_code} 收益率 {return_rate:.2%} 正常范围内"
     
     @staticmethod
-    def get_position_alerts_count(date_yyyymmdd: str = None) -> Dict[str, int]:
+    def get_position_alerts_count(date_yyyymmdd: str = None) -> dict[str, int]:
         """
         获取持仓状态统计（用于Dashboard显示）
         
@@ -149,7 +151,7 @@ class PositionStatusService:
         return counts
     
     @staticmethod
-    def get_position_status_by_instrument(ts_code: str, date_yyyymmdd: str = None) -> Optional[Dict[str, Any]]:
+    def get_position_status_by_instrument(ts_code: str, date_yyyymmdd: str = None) -> dict[str, Any | None]:
         """
         获取特定标的的持仓状态
         

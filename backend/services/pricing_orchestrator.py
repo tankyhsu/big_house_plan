@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Optional, List, Dict
 from ..db import get_conn
 from ..logs import LogContext
 from ..repository import instrument_repo, price_repo
@@ -8,15 +7,15 @@ from .utils import yyyyMMdd_to_dash
 
 class PriceProviderPort:
     def daily_for_date(self, date_yyyymmdd: str): ...
-    def trade_cal_is_open(self, date_yyyymmdd: str) -> Optional[bool]: ...
-    def trade_cal_backfill_recent_open(self, end_yyyymmdd: str, lookback_days: int = 30) -> Optional[str]: ...
+    def trade_cal_is_open(self, date_yyyymmdd: str) -> bool | None: ...
+    def trade_cal_backfill_recent_open(self, end_yyyymmdd: str, lookback_days: int = 30) -> str | None: ...
     def fund_daily_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str): ...
     def fund_nav_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str): ...
 
 
-def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext, ts_codes: Optional[List[str]] = None) -> dict:
+def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext, ts_codes: list[str | None] = None) -> dict:
     trade_date = date_yyyymmdd
-    used_dates: Dict[str, str] = {}
+    used_dates: dict[str, str] = {}
     total_found = total_updated = total_skipped = 0
 
     # Resolve targets + types
@@ -51,10 +50,10 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
         log.set_after(info)
         return info
 
-    stock_like: List[str] = []
-    hk_like: List[str] = []
-    etf_like: List[str] = []
-    fund_like: List[str] = []
+    stock_like: list[str] = []
+    hk_like: list[str] = []
+    etf_like: list[str] = []
+    fund_like: list[str] = []
     for code, t in all_targets:
         if t == "CASH":
             continue
@@ -72,7 +71,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
     if stock_like or hk_like or etf_like or fund_like:
         date_dash = yyyyMMdd_to_dash(trade_date)
         with get_conn() as conn:
-            pools: List[str] = list(set(stock_like + hk_like + etf_like + fund_like))
+            pools: list[str] = list(set(stock_like + hk_like + etf_like + fund_like))
             if pools:
                 placeholders = ",".join(["?"] * len(pools))
                 rows = conn.execute(
@@ -143,7 +142,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
             dfhk = provider.hk_daily_for_date(trade_date)
         except Exception:
             dfhk = None
-        bars: List[dict] = []
+        bars: list[dict] = []
         if dfhk is not None and not dfhk.empty:
             # Filter by our codes
             try:

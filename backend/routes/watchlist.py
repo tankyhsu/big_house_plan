@@ -1,4 +1,5 @@
-from typing import Optional
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
@@ -9,11 +10,11 @@ router = APIRouter()
 
 class WatchlistAdd(BaseModel):
     ts_code: str
-    note: Optional[str] = None
+    note: str | None = None
 
 
 @router.get("/api/watchlist")
-def api_watchlist(date: Optional[str] = Query(None, pattern=r"^\d{8}$")):
+def api_watchlist(date: str | None = Query(None, pattern=r"^\d{8}$")):
     try:
         items = list_watchlist(with_last_price=True, on_date_yyyymmdd=date)
         return {"items": items}

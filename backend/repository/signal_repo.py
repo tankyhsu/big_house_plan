@@ -2,13 +2,15 @@
 信号数据访问层
 负责信号的数据库操作，包括查询、插入、更新等
 """
+from __future__ import annotations
+
 
 import json
-from typing import Optional, List, Dict, Any
+from typing import Any
 from sqlite3 import Connection
 
-def get_signals_by_date(conn: Connection, trade_date: str, signal_type: Optional[str] = None, 
-                       ts_code: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_signals_by_date(conn: Connection, trade_date: str, signal_type: str | None = None, 
+                       ts_code: str | None = None) -> list[dict[str, Any]]:
     """
     获取指定日期的信号记录
     
@@ -38,7 +40,7 @@ def get_signals_by_date(conn: Connection, trade_date: str, signal_type: Optional
     return [dict(row) for row in rows]
 
 
-def get_signals_for_instrument(conn: Connection, ts_code: str, trade_date: str) -> List[Dict[str, Any]]:
+def get_signals_for_instrument(conn: Connection, ts_code: str, trade_date: str) -> list[dict[str, Any]]:
     """
     获取特定标的在指定日期的所有相关信号（包括全局信号）
     
@@ -93,9 +95,9 @@ def get_signals_for_instrument(conn: Connection, ts_code: str, trade_date: str) 
     return [dict(row) for row in rows]
 
 
-def get_signals_history(conn: Connection, signal_type: Optional[str] = None, ts_code: Optional[str] = None,
-                       start_date: Optional[str] = None, end_date: Optional[str] = None, 
-                       limit: int = 100) -> List[Dict[str, Any]]:
+def get_signals_history(conn: Connection, signal_type: str | None = None, ts_code: str | None = None,
+                       start_date: str | None = None, end_date: str | None = None, 
+                       limit: int = 100) -> list[dict[str, Any]]:
     """
     获取历史信号记录
     
@@ -180,9 +182,9 @@ def get_signals_history(conn: Connection, signal_type: Optional[str] = None, ts_
     return [dict(row) for row in rows]
 
 
-def insert_signal(conn: Connection, trade_date: str, ts_code: Optional[str] = None,
-                 category_id: Optional[int] = None, scope_type: str = 'INSTRUMENT',
-                 scope_data: Optional[List[str]] = None, level: str = 'INFO',
+def insert_signal(conn: Connection, trade_date: str, ts_code: str | None = None,
+                 category_id: int | None = None, scope_type: str = 'INSTRUMENT',
+                 scope_data: list[str | None] = None, level: str = 'INFO',
                  signal_type: str = 'INFO', message: str = '') -> int:
     """
     插入信号记录
@@ -245,7 +247,7 @@ def insert_signal(conn: Connection, trade_date: str, ts_code: Optional[str] = No
 
 
 def insert_signal_if_not_exists(conn: Connection, trade_date: str, ts_code: str,
-                               level: str, signal_type: str, message: str) -> Optional[int]:
+                               level: str, signal_type: str, message: str) -> int | None:
     """
     如果信号不存在则插入信号记录（避免重复插入相同类型的信号）
     
@@ -352,7 +354,7 @@ def insert_signal_if_no_recent_structure(
     signal_type: str,
     message: str,
     days_back: int = 9,
-) -> Optional[int]:
+) -> int | None:
     """
     如果过去一段时间内没有九转买入/九转卖出信号则插入信号记录；包含同日去重。
     
@@ -391,7 +393,7 @@ def insert_signal_if_no_recent_structure(
 
 def insert_signal_if_no_recent_stop(conn: Connection, trade_date: str, ts_code: str,
                                    level: str, signal_type: str, message: str, 
-                                   days_back: int = 30) -> Optional[int]:
+                                   days_back: int = 30) -> int | None:
     """
     如果过去一段时间内没有止盈/止损信号则插入信号记录
     
@@ -425,7 +427,7 @@ def insert_signal_if_no_recent_stop(conn: Connection, trade_date: str, ts_code: 
     return None
 
 
-def delete_signals_by_type(conn: Connection, signal_types: List[str]) -> int:
+def delete_signals_by_type(conn: Connection, signal_types: list[str]) -> int:
     """
     删除指定类型的所有信号
     
@@ -446,9 +448,9 @@ def delete_signals_by_type(conn: Connection, signal_types: List[str]) -> int:
 def get_last_signal_of_types(
     conn: Connection,
     ts_code: str,
-    types: List[str],
-    before_date: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    types: list[str],
+    before_date: str | None = None,
+) -> dict[str, Any | None]:
     """
     获取某标的在指定日期之前（不含当日）的最新一条指定类型信号。
 
@@ -464,7 +466,7 @@ def get_last_signal_of_types(
     if not types:
         return None
     placeholders = ','.join('?' for _ in types)
-    params: List[Any] = [ts_code]
+    params: list[Any] = [ts_code]
     sql = f"SELECT * FROM signal WHERE ts_code=? AND type IN ({placeholders})"
     params.extend(types)
     if before_date:
@@ -480,7 +482,7 @@ def delete_signal_by_id(conn: Connection, signal_id: int) -> int:
     return res.rowcount
 
 
-def get_signal_counts_by_date(conn: Connection, trade_date: str) -> Dict[str, int]:
+def get_signal_counts_by_date(conn: Connection, trade_date: str) -> dict[str, int]:
     """
     获取指定日期各类型信号的统计数量
     
@@ -505,7 +507,7 @@ def get_signal_counts_by_date(conn: Connection, trade_date: str) -> Dict[str, in
     }
 
 
-def validate_instrument_codes(conn: Connection, ts_codes: List[str]) -> List[str]:
+def validate_instrument_codes(conn: Connection, ts_codes: list[str]) -> list[str]:
     """
     验证标的代码是否存在
     
@@ -529,7 +531,7 @@ def validate_instrument_codes(conn: Connection, ts_codes: List[str]) -> List[str
     return [code for code in ts_codes if code not in existing_set]
 
 
-def validate_category_ids(conn: Connection, category_ids: List[int]) -> List[int]:
+def validate_category_ids(conn: Connection, category_ids: list[int]) -> list[int]:
     """
     验证类别ID是否存在
     

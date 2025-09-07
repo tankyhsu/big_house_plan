@@ -1,4 +1,5 @@
-from typing import Optional
+from __future__ import annotations
+
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 from ..logs import LogContext
@@ -8,7 +9,7 @@ router = APIRouter()
 
 
 class DateBody(BaseModel):
-    date: Optional[str] = None
+    date: str | None = None
 
 
 @router.post("/api/calc")

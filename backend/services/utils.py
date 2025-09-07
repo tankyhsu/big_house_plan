@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # backend/services/utils.py
 from ..db import get_conn  # 供其他svc继续复用
 

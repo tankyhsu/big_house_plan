@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # ZIG算法备份 - 84.6%准确率版本
 # 备份时间: 2025-09-06
 

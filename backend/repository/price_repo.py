@@ -1,8 +1,9 @@
-from typing import Optional, Tuple
+from __future__ import annotations
+
 from sqlite3 import Connection
 
 
-def get_last_close_on_or_before(conn: Connection, ts_code: str, date_dash: str) -> Optional[Tuple[str, float]]:
+def get_last_close_on_or_before(conn: Connection, ts_code: str, date_dash: str) -> tuple[str, float | None]:
     row = conn.execute(
         "SELECT trade_date, close FROM price_eod WHERE ts_code=? AND trade_date<=? ORDER BY trade_date DESC LIMIT 1",
         (ts_code, date_dash),

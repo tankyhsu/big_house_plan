@@ -1,4 +1,5 @@
-from typing import Optional
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -23,10 +24,10 @@ class OpeningPos(BaseModel):
 
 class PositionUpdateBody(BaseModel):
     ts_code: str
-    shares: Optional[float] = None
-    avg_cost: Optional[float] = None
+    shares: float | None = None
+    avg_cost: float | None = None
     date: str  # YYYY-MM-DD
-    opening_date: Optional[str] = None
+    opening_date: str | None = None
 
 
 @router.get("/api/position/raw")

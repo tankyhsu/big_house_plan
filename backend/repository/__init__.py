@@ -2,4 +2,6 @@
 
 Keep functions thin and focused, so services/domains avoid SQL strings.
 """
+from __future__ import annotations
+
 

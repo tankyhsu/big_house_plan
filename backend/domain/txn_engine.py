@@ -1,4 +1,5 @@
-from typing import Optional, Tuple
+from __future__ import annotations
+
 from decimal import Decimal, ROUND_HALF_UP
 
 
@@ -34,9 +35,9 @@ def compute_position_after_trade(
     old_avg_cost: float,
     action: str,
     qty: float,
-    price: Optional[float],
+    price: float | None,
     fee: float,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Given current position and an incoming txn, compute new (shares, avg_cost).
     - BUY adds shares; avg_cost is recalculated with fee capitalized.
@@ -67,10 +68,10 @@ def compute_position_after_trade(
 def compute_cash_mirror(
     action: str,
     qty: float,
-    price: Optional[float],
+    price: float | None,
     fee: float,
-    amount: Optional[float],
-) -> Tuple[Optional[str], float]:
+    amount: float | None,
+) -> tuple[str | None, float]:
     """
     Compute the mirrored cash txn for a non-cash instrument txn.
     Returns (mirror_action, mirror_abs_amount). If no mirror, returns (None, 0.0).
