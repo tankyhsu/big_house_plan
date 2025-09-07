@@ -1,118 +1,128 @@
 # Backend API & Services Overview
 
-This memory summarizes the current backend (FastAPI) API surface, key services, data flow, and related frontend hooks for quick navigation and future changes.
+This memory summarizes the current modular backend (FastAPI) API architecture, organized into separate route modules for better maintainability.
 
-## FastAPI App
-- App entry: `backend/api.py` with CORS for Vite ports 5173–5177.
-- Startup: `ensure_log_schema()` and `ensure_default_config()`; optional background price sync commented out.
-- Health: `GET /health`, Version: `GET /version`.
+## FastAPI App Structure
+- **App entry**: `backend/api.py` - Clean entry point with CORS for Vite ports 5173–5177
+- **Startup**: `ensure_log_schema()`, `ensure_default_config()`, and `ensure_watchlist_schema()` on startup
+- **Modular routing**: All endpoints organized into domain-specific route modules under `backend/routes/`
 
-## Core API Groups
+## Route Modules Architecture
 
-### Dashboard & Series
-- `GET /api/dashboard` (query `date=YYYYMMDD`): portfolio summary (market_value, cost, pnl, ret, signal stats, price fallback flag). Uses `dashboard_svc.get_dashboard`.
-- `GET /api/dashboard/aggregate` (start/end YYYYMMDD, period=day|week|month): aggregated KPI sequence; uses `dashboard_svc.aggregate_kpi`.
-- `GET /api/series/position` (start/end YYYYMMDD, `ts_codes=code1,code2`): time series by instrument from `portfolio_daily` joined with `instrument`.
+### Base Routes (`backend/routes/base.py`)
+- `GET /health`: Health check endpoint
+- `GET /version`: Application version endpoint
 
-### Category & Position Views (read)
-- `GET /api/category` (date YYYYMMDD): category distribution view via `dashboard_svc.list_category`.
-- `GET /api/position` (date YYYYMMDD): per-instrument position view via `dashboard_svc.list_position`.
+### Dashboard Routes (`backend/routes/dashboard.py`)  
+- `GET /api/dashboard` (query `date=YYYYMMDD`): portfolio summary (market_value, cost, pnl, ret, signal stats, price fallback flag)
+- `GET /api/dashboard/aggregate` (start/end YYYYMMDD, period=day|week|month): aggregated KPI sequence
+- `GET /api/category` (date YYYYMMDD): category distribution view
+- `GET /api/position` (date YYYYMMDD): per-instrument position view
+- `GET /api/signal` (date YYYYMMDD, optional `type`, `ts_code`): daily signals
+- `GET /api/signal/all` (optional `type`, `ts_code`, `start_date`, `end_date`, `limit`): historical signals
+- `GET /api/series/position` (start/end YYYYMMDD, `ts_codes=code1,code2`): time series by instrument
 
-### Signals
-- `GET /api/signal` (date YYYYMMDD, optional `type`, `ts_code`): daily signals via `dashboard_svc.list_signal`.
-- `GET /api/signal/all` (optional `type`, `ts_code`, `start_date`, `end_date`, `limit`): historical signals via `dashboard_svc.list_signal_all`.
-- `POST /api/signal/create`: manual signal creation supporting scope types (INSTRUMENT/CATEGORY/MULTI_*/ALL_*). Calls `signal_svc.create_manual_signal_extended`.
-- `POST /api/signal/rebuild-historical`: clears and regenerates all historical signals. Calls `signal_svc.rebuild_all_historical_signals`.
-- `POST /api/signal/rebuild-structure`: rebuilds last 30 days of structure signals. Calls `SignalGenerationService.rebuild_structure_signals_for_period`.
-- `GET /api/signals/current-status` (date YYYYMMDD): separates historical event signals and real-time position status using `SignalService` and `PositionStatusService`.
-- `GET /api/positions/status` (date, optional `ts_code`): current position status list or single instrument via `PositionStatusService`.
+### Signal Routes (`backend/routes/signals.py`)
+- `GET /api/signals/current-status` (date YYYYMMDD): separates historical event signals and real-time position status
+- `GET /api/positions/status` (date, optional `ts_code`): current position status list or single instrument
+- `POST /api/signal/create`: manual signal creation supporting scope types (INSTRUMENT/CATEGORY/MULTI_*/ALL_*)
+- `POST /api/signal/rebuild-historical`: clears and regenerates all historical signals
+- `POST /api/signal/rebuild-structure`: rebuilds last 30 days of structure signals
+- `GET /api/zig/signal/test`: ZIG signal detection testing endpoint
+- `POST /api/zig/signal/validate`: ZIG signal validation endpoint
 
-### Settings
-- `GET /api/settings/get`: returns config typed values.
-- `POST /api/settings/update` with `{ updates: Record<string, any> }`: upserts config keys.
+### Watchlist Routes (`backend/routes/watchlist.py`)
+- `GET /api/watchlist` (optional date YYYYMMDD): watchlist items with last price
+- `POST /api/watchlist/add`: add instrument to watchlist with optional note
+- `POST /api/watchlist/remove`: remove instrument from watchlist
 
-### Instruments & Categories
-- `GET /api/category/list`: all categories for dropdowns.
-- `GET /api/instrument/list` (optional `q`, `active_only=true`): autocomplete list via `instrument_svc.list_instruments`.
-- `GET /api/instrument/get` (`ts_code`): instrument detail with category names.
-- `POST /api/instrument/create` (body ts_code/name/category_id/active/type; `recalc_today` query optional): creates/updates mapping; optional same-day recalculation.
-- `POST /api/instrument/update` (ts_code, active): toggles active using `repository.instrument_repo.set_active`.
-- `POST /api/instrument/edit` (ts_code, name, category_id, active, type): edit base fields via `instrument_svc.edit_instrument`.
-- `POST /api/seed/load` (categories_csv, instruments_csv, optional `recalc_today`): loads seeds; optional same-day calc.
-- `GET /api/instrument/lookup` (`ts_code`, optional `date=YYYYMMDD`): helper lookups via `TuShareProvider` with type inference and optional price on/before date.
+### Transaction Routes (`backend/routes/transactions.py`)
+- `GET /api/txn/list` (page, size): paginated transaction list
+- `GET /api/txn/range` (start/end YYYYMMDD, optional comma `ts_codes`): range query with instrument names
+- `POST /api/txn/create`: creates BUY/SELL/DIV/FEE/ADJ and triggers recalculation
+- `POST /api/txn/bulk` with `{ items: TxnCreate[], recalc: "none"|"latest"|"all" }`: batch transaction import
 
-### Transactions (write triggers recalculation)
-- `GET /api/txn/list` (page,size): paginated transactions.
-- `GET /api/txn/range` (start/end YYYYMMDD, optional comma `ts_codes`): range query joined with instrument names.
-- `POST /api/txn/create`: creates BUY/SELL/DIV/FEE/ADJ and triggers `calc()` for the transaction date.
-- `POST /api/txn/bulk` with `{ items: TxnCreate[], recalc: "none"|"latest"|"all" }`: batch import; guarded recalculation strategy.
+### Settings Routes (`backend/routes/settings.py`)
+- `GET /api/settings/get`: returns configuration values (masks sensitive data like tushare_token)
+- `POST /api/settings/update` with `{ updates: Record<string, any> }`: updates configuration keys
 
-### Positions (opening/base positions; write triggers recalculation downstream via callers)
-- `GET /api/position/raw` (frontend uses): returns raw positions for maintenance; implemented in `position_svc.list_positions_raw`.
-- `POST /api/position/update` with `{ ts_code, shares?, avg_cost?, date, opening_date? }`: upsert with opening_date support.
-- `POST /api/position/delete` with `{ ts_code, recalc_date? }`: deletes one.
-- `POST /api/position/cleanup-zero` with optional `recalc_date`: removes zero-share positions.
-- IRR: `GET /api/position/irr` and `/api/position/irr/batch` (used by frontend) via `analytics_svc`.
+### Reference Data Routes (`backend/routes/reference_data.py`)
+- `GET /api/category/list`: all categories for dropdowns
+- `POST /api/category/create`: create new category
+- `POST /api/category/update`: update category
+- `POST /api/category/bulk-update`: bulk category updates
+- `GET /api/instrument/list` (optional `q`, `active_only=true`): autocomplete instrument list
+- `GET /api/instrument/get` (`ts_code`): instrument detail with category names
+- `POST /api/instrument/create`: creates/updates instrument mapping with optional recalculation
+- `POST /api/instrument/update`: toggles instrument active status
+- `POST /api/instrument/edit`: edit instrument base fields
+- `POST /api/seed/load` (categories_csv, instruments_csv, optional `recalc_today`): loads seed data
 
-### Prices & Calc
-- `POST /api/sync-prices` with `{ date, recalc }`: syncs EOD prices via `pricing_svc.sync_prices_tushare`; optional calc.
-- `POST /api/calc` with `{ date }`: triggers recomputation pipeline via `calc_svc.calc`.
-- `GET /api/price/last` (`ts_code`, optional `date`): last price as of date.
-- `GET /api/price/ohlc` (`ts_code`, `start`, `end` YYYYMMDD): OHLC range used in K-line charts.
+### Position Routes (`backend/routes/positions.py`)
+- `GET /api/position/raw`: returns raw positions for maintenance
+- `POST /api/position/opening`: set opening position
+- `POST /api/position/update` with `{ ts_code, shares?, avg_cost?, date, opening_date? }`: upsert position
+- `POST /api/position/delete` with `{ ts_code, recalc_date? }`: delete position
 
-### Backup/Restore
-- `POST /api/backup`: dumps business tables as JSON (excludes logs). Returns downloadable JSON with summary and timestamped filename.
-- `POST /api/restore` (multipart file): transactional restore of business tables; advises recalculation after restore.
+### Pricing Routes (`backend/routes/pricing.py`)
+- `POST /api/sync-prices` with `{ date, recalc }`: syncs EOD prices via TuShare with optional recalculation
+- `GET /api/price/last` (`ts_code`, optional `date`): last price as of date
+- `GET /api/price/ohlc` (`ts_code`, `start`, `end` YYYYMMDD): OHLC range for K-line charts
+- `GET /api/instrument/lookup` (`ts_code`, optional `date=YYYYMMDD`): instrument lookup with TuShare integration
 
-## Key Services & Utilities
-- `services/config_svc.py`: defaults, typed `get_config()`, `update_config()`, and `ensure_default_config()` on startup. Includes `cash_ts_code` and `tushare_fund_rate_per_min`.
-- `services/position_svc.py`: CRUD-like operations for base positions via `repository.position_repo`.
-- `services/dashboard_svc.py`: aggregates views for dashboard/category/position/signal.
-- `services/signal_svc.py`: automatic and manual signal creation; structure signal rebuilders.
-- `services/pricing_svc.py` + `providers/tushare_provider.py`: external price sync; supports stock/ETF/fund with rate limiting config.
-- `services/calc_svc.py`: recomputation pipeline; writes `portfolio_daily`, `category_daily`, signals; dedup rules noted in `schema.sql`.
-- `services/analytics_svc.py`: IRR/XIRR for instruments and batch.
-- `services/position_status_svc.py`: real-time thresholds (stop gain/loss) and counts for alerts.
-- `services/txn_svc.py`: transaction persistence and side-effects.
-- `services/utils.py`: date helpers like `yyyyMMdd_to_dash` and rounding utilities via `domain/txn_engine`.
+### Analytics Routes (`backend/routes/analytics.py`)
+- `GET /api/position/irr` (`ts_code`, optional `date`): IRR calculation for single instrument
+- `GET /api/position/irr/batch` (optional `date`): batch IRR calculations for all positions
 
-## Data Model (SQLite)
-- See `schema.sql` for tables: `config`, `category`, `instrument`, `txn`, `price_eod`, `ma_cache`, `position`, `portfolio_daily`, `category_daily`, `signal`, `operation_log` with supporting indexes.
-- Signals table stores historical signals; calc inserters dedup by date + type + scope.
+### Reports Routes (`backend/routes/reports.py`)
+- `POST /api/calc` with `{ date }`: triggers recomputation pipeline
 
-## DB Path Resolution
-- `backend/db.py#get_db_path`: priority order
-  1) env `PORT_DB_PATH`
-  2) `config.yaml.test_db_path` if test (`APP_ENV=test` or under pytest)
-  3) `config.yaml.db_path`
-  4) fallback to project root `portfolio.db`, else legacy `backend/data/portfolio.db` if exists
-- Ensures parent directories exist; `get_conn()` sets `foreign_keys=ON` and `row_factory=Row`.
+### Logs Routes (`backend/routes/logs.py`)
+- Log-related endpoints for operation tracking and debugging
 
-## Logging
-- `backend/logs.py`: `operation_log` table + `LogContext` for structured audit logging with before/after/payload and latency.
-- `ensure_log_schema()` creates indices for `ts` and `action`.
+### Maintenance Routes (`backend/routes/maintenance.py`)
+- `POST /api/backup`: dumps business tables as JSON with downloadable response
+- `POST /api/restore` (multipart file): transactional restore of business tables
 
-## Frontend Integration (selected)
-- Axios client base: `VITE_API_BASE` or `http://127.0.0.1:8000` (`frontend/src/api/client.ts`).
-- Hooks map closely to endpoints: dashboard/category/position/signals/txn/instrument/price/irr/settings/backup-restore (`frontend/src/api/hooks.ts`).
-- UI pages: `src/pages` include Dashboard, Signals, Review, Txn, Settings, PositionEditor, InstrumentDetail.
-- Charts: `src/components/charts/*` consume OHLC and position series; `fetchKlineConfig` derives threshold lines from `/api/positions/status`.
+## Key Services & Utilities (unchanged)
+- `services/config_svc.py`: configuration management with defaults and typed access
+- `services/position_svc.py`: CRUD operations for base positions
+- `services/dashboard_svc.py`: aggregated views for dashboard/category/position/signal
+- `services/signal_svc.py`: automatic and manual signal creation with structure signal rebuilders
+- `services/pricing_svc.py` + `providers/tushare_provider.py`: external price sync with rate limiting
+- `services/calc_svc.py`: recomputation pipeline for portfolio_daily, category_daily, signals
+- `services/analytics_svc.py`: IRR/XIRR calculations for instruments and batch operations
+- `services/position_status_svc.py`: real-time thresholds (stop gain/loss) and alert counts
+- `services/txn_svc.py`: transaction persistence and side-effects
+- `services/watchlist_svc.py`: watchlist management operations
+- `services/utils.py`: date helpers and rounding utilities
 
-## Dev & Ops Notes
-- Start both: `bash scripts/dev.sh`; fast start: `bash scripts/dev-fast.sh`.
-- Manual: backend `uvicorn backend.api:app --reload --port 8000`; frontend `cd frontend && npm run dev`.
-- Config file: `config.yaml` with `db_path`, optional `test_db_path`, `tushare_token` etc. Do not commit secrets.
-- Seeds: `seeds/categories.csv`, `seeds/instruments.csv`; DB schema: `schema.sql`.
-- Tests present under `backend/tests/` targeting services and API contracts (pytest).
+## Architecture Benefits
+- **Separation of concerns**: Each route module handles a specific business domain
+- **Maintainability**: Easier to locate and modify specific functionality
+- **Scalability**: New features can be added to appropriate modules without affecting others
+- **Testing**: Individual route modules can be tested in isolation
+- **Clean entry point**: `backend/api.py` focuses only on app setup and router registration
 
-## Conventions & Behaviors
-- All write operations (instrument/txn/position edits, seed load, price sync) typically trigger `calc()` for affected date(s).
-- Frontend expects dates in `YYYYMMDD` for most queries; server converts to `YYYY-MM-DD` where needed.
-- Price fallback logic: when EOD prices missing, some views fallback to avg_cost (flag surfaced in APIs).
+## Data Model & Database (unchanged)
+- See `schema.sql` for tables: `config`, `category`, `instrument`, `txn`, `price_eod`, `ma_cache`, `position`, `portfolio_daily`, `category_daily`, `signal`, `operation_log`
+- DB path resolution via `backend/db.py#get_db_path` with environment variable support
+- Logging via `backend/logs.py` with `LogContext` for structured audit logging
 
-## Quick Pointers
-- API entry and routing: `backend/api.py`.
-- Recalc pipeline: `backend/services/calc_svc.py`.
-- Price sync: `backend/services/pricing_svc.py`, provider: `backend/providers/tushare_provider.py`.
-- Real-time position status: `backend/services/position_status_svc.py`.
-- Backup/restore endpoints at end of `backend/api.py` and matching frontend hooks.
+## Frontend Integration (unchanged)
+- Axios client base: `VITE_API_BASE` or `http://127.0.0.1:8000`
+- React Query hooks map to endpoints in `frontend/src/api/hooks.ts`
+- UI pages consume modular API endpoints seamlessly
+- Charts use OHLC and position series from pricing and dashboard routes
+
+## Development & Operations
+- Start: `bash scripts/dev.sh` or `bash scripts/dev-fast.sh`
+- Backend: `uvicorn backend.api:app --reload --port 8000`
+- Frontend: `cd frontend && npm run dev`
+- Tests: `pytest` from project root targeting individual route modules and services
+
+## Conventions & Behaviors (unchanged)
+- All write operations trigger `calc()` for affected dates
+- Frontend expects `YYYYMMDD` format for most date queries
+- Price fallback logic when EOD prices are missing
+- Transactional operations with proper error handling and logging
