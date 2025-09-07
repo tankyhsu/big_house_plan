@@ -1,0 +1,204 @@
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Query, Body
+from pydantic import BaseModel
+
+from ..logs import LogContext
+from ..db import get_conn
+from ..services.calc_svc import calc
+from ..services.category_svc import (
+    create_category,
+    list_categories,
+    update_category as svc_update_category,
+)
+from ..services.instrument_svc import (
+    create_instrument,
+    list_instruments,
+    seed_load,
+    get_instrument_detail,
+    edit_instrument,
+)
+from ..repository.instrument_repo import set_active as repo_set_active
+
+router = APIRouter()
+
+
+class CategoryCreate(BaseModel):
+    name: str
+    sub_name: str = ""
+    target_units: float
+
+
+class CategoryUpdateItem(BaseModel):
+    id: int
+    sub_name: Optional[str] = None
+    target_units: Optional[float] = None
+
+
+class CategoryBulkUpdate(BaseModel):
+    items: List[CategoryUpdateItem]
+
+
+class InstrumentCreate(BaseModel):
+    ts_code: str
+    name: str
+    category_id: int
+    active: bool = True
+    type: Optional[str] = None
+
+
+class InstrumentUpdate(BaseModel):
+    ts_code: str
+    active: bool
+    type: Optional[str] = None
+
+
+class InstrumentEdit(BaseModel):
+    ts_code: str
+    name: str
+    category_id: int
+    active: bool = True
+    type: Optional[str] = None
+
+
+@router.get("/api/category/list")
+def api_category_list():
+    return list_categories()
+
+
+@router.post("/api/category/create")
+def api_category_create(body: CategoryCreate):
+    log = LogContext("CREATE_CATEGORY")
+    log.set_payload(body.dict())
+    try:
+        new_id = create_category(body.name, body.sub_name, body.target_units, log)
+        log.write("OK")
+        return {"message": "ok", "id": new_id}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/category/update")
+def api_category_update(body: CategoryUpdateItem):
+    log = LogContext("UPDATE_CATEGORY")
+    log.set_payload(body.dict())
+    try:
+        svc_update_category(body.id, body.sub_name, body.target_units, log)
+        log.write("OK")
+        return {"message": "ok"}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/category/bulk-update")
+def api_category_bulk_update(body: CategoryBulkUpdate):
+    log = LogContext("BULK_UPDATE_CATEGORY")
+    log.set_payload({"count": len(body.items)})
+    try:
+        for item in body.items:
+            svc_update_category(item.id, item.sub_name, item.target_units, log)
+        log.write("OK")
+        return {"message": "ok", "updated": len(body.items)}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/instrument/list")
+def api_instrument_list():
+    return list_instruments()
+
+
+@router.get("/api/instrument/get")
+def api_instrument_get(ts_code: str = Query(...)):
+    try:
+        return get_instrument_detail(ts_code)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/instrument/create")
+def api_instrument_create(body: InstrumentCreate, recalc_today: bool = Query(False)):
+    log = LogContext("CREATE_INSTRUMENT")
+    log.set_payload(body.dict())
+    try:
+        create_instrument(
+            body.ts_code,
+            body.name,
+            body.category_id,
+            body.active,
+            log,
+            sec_type=body.type,
+        )
+        if recalc_today:
+            from datetime import datetime
+
+            today = datetime.now().strftime("%Y%m%d")
+            calc(today, LogContext("CALC_AFTER_INSTRUMENT_CREATE"))
+        log.set_entity("INSTRUMENT", body.ts_code)
+        log.write("OK")
+        return {"message": "ok"}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/instrument/update")
+def api_instrument_update(body: InstrumentUpdate):
+    log = LogContext("UPDATE_INSTRUMENT")
+    log.set_payload(body.dict())
+    try:
+        with get_conn() as conn:
+            repo_set_active(conn, body.ts_code, body.active)
+            conn.commit()
+        log.set_entity("INSTRUMENT", body.ts_code)
+        log.write("OK")
+        return {"message": "ok"}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/instrument/edit")
+def api_instrument_edit(body: InstrumentEdit):
+    log = LogContext("EDIT_INSTRUMENT")
+    log.set_payload(body.dict())
+    try:
+        edit_instrument(
+            body.ts_code,
+            body.name,
+            int(body.category_id),
+            bool(body.active),
+            body.type,
+            log,
+        )
+        log.set_entity("INSTRUMENT", body.ts_code)
+        log.write("OK")
+        return {"message": "ok"}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/seed/load")
+def api_seed_load_route(
+    categories_csv: str = Body(...),
+    instruments_csv: str = Body(...),
+    recalc_today: bool = Query(False),
+):
+    log = LogContext("SEED_LOAD")
+    log.set_payload({"categories_csv": categories_csv, "instruments_csv": instruments_csv})
+    try:
+        res = seed_load(categories_csv, instruments_csv, log)
+        if recalc_today:
+            from datetime import datetime
+
+            today = datetime.now().strftime("%Y%m%d")
+            calc(today, LogContext("CALC_AFTER_SEED_LOAD"))
+        log.write("OK")
+        return {"message": "ok", **res}
+    except Exception as e:
+        log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
