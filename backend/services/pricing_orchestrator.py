@@ -52,6 +52,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
         return info
 
     stock_like: List[str] = []
+    hk_like: List[str] = []
     etf_like: List[str] = []
     fund_like: List[str] = []
     for code, t in all_targets:
@@ -61,15 +62,17 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
             etf_like.append(code)
         elif t in ("FUND", "FUND_OPEN", "MUTUAL"):
             fund_like.append(code)
+        elif t in ("HK", "HK_STOCK", "HONGKONG"):
+            hk_like.append(code)
         else:
             stock_like.append(code)
 
     # Pre-filter: if we already have a price row for this exact date, skip fetching for that code
     # This reduces network calls significantly when re-running backfills.
-    if stock_like or etf_like or fund_like:
+    if stock_like or hk_like or etf_like or fund_like:
         date_dash = yyyyMMdd_to_dash(trade_date)
         with get_conn() as conn:
-            pools: List[str] = list(set(stock_like + etf_like + fund_like))
+            pools: List[str] = list(set(stock_like + hk_like + etf_like + fund_like))
             if pools:
                 placeholders = ",".join(["?"] * len(pools))
                 rows = conn.execute(
@@ -77,13 +80,19 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                     (date_dash, *pools),
                 ).fetchall()
                 have = {r["ts_code"] for r in rows}
-                before_counts = (len(stock_like), len(etf_like), len(fund_like))
+                before_counts = (len(stock_like), len(hk_like), len(etf_like), len(fund_like))
                 skipped_codes = [c for c in pools if c in have]
                 stock_like = [c for c in stock_like if c not in have]
+                hk_like = [c for c in hk_like if c not in have]
                 etf_like = [c for c in etf_like if c not in have]
                 fund_like = [c for c in fund_like if c not in have]
-                after_counts = (len(stock_like), len(etf_like), len(fund_like))
-                total_skipped += (before_counts[0] - after_counts[0]) + (before_counts[1] - after_counts[1]) + (before_counts[2] - after_counts[2])
+                after_counts = (len(stock_like), len(hk_like), len(etf_like), len(fund_like))
+                total_skipped += (
+                    (before_counts[0] - after_counts[0]) +
+                    (before_counts[1] - after_counts[1]) +
+                    (before_counts[2] - after_counts[2]) +
+                    (before_counts[3] - after_counts[3])
+                )
                 # Skip printing existing codes debug info
 
     # Store updated codes for ZIG signal processing
@@ -123,6 +132,83 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                 updated_codes.append(r["ts_code"])  # 记录更新的股票代码
             with get_conn() as conn:
                 price_repo.upsert_price_eod_many(conn, bars)
+            total_updated += len(bars)
+
+    # HK STOCK: hk_daily with simple window backfill
+    if hk_like:
+        used_date_hk = trade_date
+        dfhk = None
+        try:
+            # Try direct trade_date fetch for all HK
+            dfhk = provider.hk_daily_for_date(trade_date)
+        except Exception:
+            dfhk = None
+        bars: List[dict] = []
+        if dfhk is not None and not dfhk.empty:
+            # Filter by our codes
+            try:
+                dfhk2 = dfhk[dfhk["ts_code"].isin(hk_like)]
+            except Exception:
+                dfhk2 = dfhk
+            total_found += len(dfhk2)
+            for _, r in dfhk2.iterrows():
+                bars.append({
+                    "ts_code": r.get("ts_code") or r.get("code"),
+                    "trade_date": yyyyMMdd_to_dash(str(r.get("trade_date"))),
+                    "close": float(r.get("close")) if r.get("close") is not None else None,
+                    "pre_close": float(r.get("pre_close")) if r.get("pre_close") is not None else None,
+                    "open": float(r.get("open")) if r.get("open") is not None else None,
+                    "high": float(r.get("high")) if r.get("high") is not None else None,
+                    "low": float(r.get("low")) if r.get("low") is not None else None,
+                    "vol": float(r.get("vol")) if r.get("vol") is not None else None,
+                    "amount": float(r.get("amount")) if r.get("amount") is not None else None,
+                })
+                used_dates[bars[-1]["ts_code"]] = trade_date
+                updated_codes.append(bars[-1]["ts_code"])  # 用于ZIG信号刷新
+        else:
+            # Fallback: fetch per-code window and take last <= end
+            from datetime import datetime, timedelta
+            end_dt = datetime.strptime(trade_date, "%Y%m%d")
+            start_dt = end_dt - timedelta(days=30)
+            start_str = start_dt.strftime("%Y%m%d")
+            end_str = trade_date
+            for code in hk_like:
+                hk_df = None
+                try:
+                    hk_df = provider.hk_daily_window(code, start_str, end_str)
+                except Exception:
+                    hk_df = None
+                if hk_df is None or hk_df.empty:
+                    continue
+                try:
+                    hk_df = hk_df.sort_values("trade_date")
+                    hk_df = hk_df[hk_df["trade_date"] <= end_str]
+                except Exception:
+                    pass
+                if hk_df is None or hk_df.empty:
+                    continue
+                last = hk_df.iloc[-1]
+                used = str(last.get("trade_date"))
+                close = last.get("close")
+                if close is None:
+                    continue
+                bars.append({
+                    "ts_code": code,
+                    "trade_date": yyyyMMdd_to_dash(used),
+                    "close": float(close),
+                    "pre_close": float(last.get("pre_close")) if last.get("pre_close") is not None else None,
+                    "open": float(last.get("open")) if last.get("open") is not None else None,
+                    "high": float(last.get("high")) if last.get("high") is not None else None,
+                    "low": float(last.get("low")) if last.get("low") is not None else None,
+                    "vol": float(last.get("vol")) if last.get("vol") is not None else None,
+                    "amount": float(last.get("amount")) if last.get("amount") is not None else None,
+                })
+                used_dates[code] = used
+                updated_codes.append(code)
+        if bars:
+            with get_conn() as conn:
+                price_repo.upsert_price_eod_many(conn, bars)
+            total_found += len(bars)
             total_updated += len(bars)
 
     # ETF: fund_daily window, pick last <= end

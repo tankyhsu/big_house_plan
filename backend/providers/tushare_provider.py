@@ -35,6 +35,7 @@ class TuShareProvider:
         self._rate = _RateLimiter(fund_rate_per_min)
         # simple in-memory caches
         self._cache_daily: Dict[str, Any] = {}
+        self._cache_hk_daily: Dict[str, Any] = {}
         self._cache_trade_is_open: Dict[str, Optional[bool]] = {}
         self._cache_trade_backfill: Dict[Tuple[str, int], Optional[str]] = {}
         self._cache_fund_daily: Dict[Tuple[str, str, str], Any] = {}
@@ -66,6 +67,29 @@ class TuShareProvider:
         except Exception as e:
             print(f"[tushare_provider] daily error: {e}")
             self._cache_daily[date_yyyymmdd] = None
+            return None
+
+    # -------- HK STOCK --------
+    def hk_daily_for_date(self, date_yyyymmdd: str):
+        """Fetch Hong Kong stock daily bars for a trade date using hk_daily(trade_date=...)."""
+        if date_yyyymmdd in self._cache_hk_daily:
+            return self._cache_hk_daily[date_yyyymmdd]
+        try:
+            df = self._retry_call(self.pro.hk_daily, trade_date=date_yyyymmdd)
+            self._cache_hk_daily[date_yyyymmdd] = df
+            return df
+        except Exception as e:
+            print(f"[tushare_provider] hk_daily error: {e}")
+            self._cache_hk_daily[date_yyyymmdd] = None
+            return None
+
+    def hk_daily_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str):
+        """Fetch a window for a single HK code and return DataFrame (may be empty)."""
+        try:
+            df = self._retry_call(self.pro.hk_daily, ts_code=ts_code, start_date=start_yyyymmdd, end_date=end_yyyymmdd)
+            return df
+        except Exception as e:
+            print(f"[tushare_provider] hk_daily window error: {e}")
             return None
 
     def trade_cal_is_open(self, date_yyyymmdd: str) -> Optional[bool]:

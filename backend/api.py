@@ -1305,6 +1305,8 @@ def api_instrument_lookup(ts_code: str = Query(...), date: Optional[str] = Query
             out_type = "FUND"
         elif ts_code.endswith(".SH") or ts_code.endswith(".SZ"):
             out_type = "ETF"
+        elif ts_code.endswith(".HK"):
+            out_type = "HK"
         else:
             out_type = "STOCK"
 
@@ -1326,6 +1328,32 @@ def api_instrument_lookup(ts_code: str = Query(...), date: Optional[str] = Query
                         c = row.iloc[0].get("close")
                         if c is not None:
                             price = {"trade_date": f"{used[0:4]}-{used[4:6]}-{used[6:8]}", "close": float(c)}
+            elif out_type == "HK":
+                # Prefer exact-date hk_daily; fallback to 30-day window last <= date
+                df = prov.hk_daily_for_date(date)
+                used = date
+                row = None
+                try:
+                    if df is not None and not df.empty:
+                        row = df[df["ts_code"] == ts_code]
+                except Exception:
+                    row = None
+                if row is not None and not getattr(row, 'empty', True):
+                    c = row.iloc[0].get("close")
+                    if c is not None:
+                        price = {"trade_date": f"{used[0:4]}-{used[4:6]}-{used[6:8]}", "close": float(c)}
+                if price is None:
+                    from datetime import datetime, timedelta
+                    end_dt = datetime.strptime(date, "%Y%m%d"); start_dt = end_dt - timedelta(days=30)
+                    win = prov.hk_daily_window(ts_code, start_dt.strftime("%Y%m%d"), date)
+                    if win is not None and not win.empty:
+                        win = win.sort_values("trade_date"); win = win[win["trade_date"] <= date]
+                        if not win.empty:
+                            last = win.iloc[-1]
+                            c = last.get("close")
+                            if c is not None:
+                                used = str(last["trade_date"])
+                                price = {"trade_date": f"{used[0:4]}-{used[4:6]}-{used[6:8]}", "close": float(c)}
             elif out_type == "ETF":
                 from datetime import datetime, timedelta
                 end_dt = datetime.strptime(date, "%Y%m%d"); start_dt = end_dt - timedelta(days=30)
