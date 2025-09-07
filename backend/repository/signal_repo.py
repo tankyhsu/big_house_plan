@@ -443,6 +443,42 @@ def delete_signals_by_type(conn: Connection, signal_types: List[str]) -> int:
     result = conn.execute(f"DELETE FROM signal WHERE type IN ({placeholders})", signal_types)
     return result.rowcount
 
+def get_last_signal_of_types(
+    conn: Connection,
+    ts_code: str,
+    types: List[str],
+    before_date: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    获取某标的在指定日期之前（不含当日）的最新一条指定类型信号。
+
+    Args:
+        conn: 数据库连接
+        ts_code: 标的代码
+        types: 类型列表，例如 ['ZIG_BUY','ZIG_SELL']
+        before_date: 仅考虑该日期之前的记录（YYYY-MM-DD）；None 表示不限定
+
+    Returns:
+        最新一条记录的字典，若不存在返回 None
+    """
+    if not types:
+        return None
+    placeholders = ','.join('?' for _ in types)
+    params: List[Any] = [ts_code]
+    sql = f"SELECT * FROM signal WHERE ts_code=? AND type IN ({placeholders})"
+    params.extend(types)
+    if before_date:
+        sql += " AND trade_date < ?"
+        params.append(before_date)
+    sql += " ORDER BY trade_date DESC, id DESC LIMIT 1"
+    row = conn.execute(sql, params).fetchone()
+    return (dict(row) if row else None)
+
+def delete_signal_by_id(conn: Connection, signal_id: int) -> int:
+    """按 ID 删除一条信号，返回受影响行数"""
+    res = conn.execute("DELETE FROM signal WHERE id=?", (signal_id,))
+    return res.rowcount
+
 
 def get_signal_counts_by_date(conn: Connection, trade_date: str) -> Dict[str, int]:
     """

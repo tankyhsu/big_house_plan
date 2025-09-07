@@ -88,31 +88,7 @@ export function buildTooltipFormatter(params: {
         html += `</div></div>`;
       }
       
-      // 2. 持仓参考线 (成本线、止盈线或止损线) - 分行显示
-      const positionLines = pLines.filter(pl => 
-        pl.seriesName.includes('成本线') || 
-        pl.seriesName.includes('止盈线') || 
-        pl.seriesName.includes('止损线')
-      );
-      if (positionLines.length > 0) {
-        html += `<div style="margin-bottom: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">`;
-        html += `<div style="color: #10b981; font-size: 11px; margin-bottom: 4px;">持仓参考</div>`;
-        positionLines.forEach(pl => {
-          if (typeof pl.data === 'number') {
-            let lineColor = '#666666';
-            let lineIcon = '━';
-            if (pl.seriesName.includes('止盈')) {
-              lineColor = '#10b981';
-              lineIcon = '━';
-            } else if (pl.seriesName.includes('止损')) {
-              lineColor = '#ef4444';  
-              lineIcon = '━';
-            }
-            html += `<div style="font-size: 11px; margin-bottom: 2px;"><span style="color: ${lineColor};">${lineIcon}</span> <span style="color: #ccc;">${pl.seriesName}:</span> <span style="color: ${lineColor}; font-weight: bold;">${formatPrice(pl.data)}</span></div>`;
-          }
-        });
-        html += `</div>`;
-      }
+      // 2.（移除）持仓参考线 (成本线、止盈线或止损线)
       
       // 3. 技术指标 (MACD, KDJ, BIAS等) - 按类型分行
       const techLines = pLines.filter(pl => 

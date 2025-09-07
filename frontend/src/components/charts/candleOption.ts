@@ -95,6 +95,19 @@ export function buildCandleOption(params: CandleOptionParams) {
   // Build signal series (various trading signals)
   const signalSeriesResult = buildSignalSeries({ signals, items, dates });
   allSeries.push(...signalSeriesResult.series);
+  
+  // 将特殊信号（ZIG信号和利空利好信号）作为markPoint添加到K线系列中
+  if (signalSeriesResult.specialMarkPoints && signalSeriesResult.specialMarkPoints.length > 0) {
+    const candlestickSeries = allSeries.find(s => s.type === 'candlestick');
+    if (candlestickSeries) {
+      if (!candlestickSeries.markPoint) {
+        candlestickSeries.markPoint = { data: [] };
+      }
+      candlestickSeries.markPoint.data.push(...signalSeriesResult.specialMarkPoints);
+      candlestickSeries.markPoint.silent = false; // 允许点击事件
+      candlestickSeries.markPoint.tooltip = { show: false } as any; // 统一走全局 axis tooltip
+    }
+  }
 
   // Build technical indicators (MACD, KDJ, BIAS, Volume)
   const technicalIndicatorsResult = buildTechnicalIndicators({
@@ -157,7 +170,54 @@ export function buildCandleOption(params: CandleOptionParams) {
         color: '#fff',
         fontSize: 12
       },
-      extraCssText: 'border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);',
+      extraCssText: 'border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); max-width: min(420px, 90vw); max-height: calc(100vh - 32px); overflow: auto; white-space: normal; word-break: break-word;',
+      confine: true,
+      position: function (pos: number[], _params: any, dom: HTMLElement, _rect: any, size: any) {
+        const [x, y] = pos; // relative to chart container
+        const viewW = size.viewSize[0];
+        const viewH = size.viewSize[1];
+        const boxW = size.contentSize[0];
+        const boxH = size.contentSize[1];
+
+        // Start with offset near cursor
+        let left = x + 16;
+        let top = y + 16;
+
+        // Prefer left side if overflowing container right edge
+        if (left + boxW > viewW) left = x - boxW - 16;
+        if (left < 0) left = 0; // clamp to container
+
+        // Prefer above if overflowing container bottom edge
+        if (top + boxH > viewH) top = y - boxH - 16;
+        if (top < 0) top = 0; // clamp to container
+
+        // Additionally clamp to viewport to ensure fully visible on screen
+        const containerEl = dom && dom.parentElement ? (dom.parentElement as HTMLElement) : null;
+        const rect = containerEl ? containerEl.getBoundingClientRect() : { left: 0, top: 0, width: viewW, height: viewH } as any;
+        const winW = window.innerWidth || document.documentElement.clientWidth;
+        const winH = window.innerHeight || document.documentElement.clientHeight;
+
+        // Convert to viewport absolute coords
+        let absLeft = rect.left + left;
+        let absTop = rect.top + top;
+
+        // If overflow viewport right, shift left within viewport
+        if (absLeft + boxW > winW - 8) {
+          left = Math.max(0, winW - boxW - 8 - rect.left);
+          absLeft = rect.left + left;
+        }
+        // If overflow viewport bottom, shift up within viewport
+        if (absTop + boxH > winH - 8) {
+          top = Math.max(0, winH - boxH - 8 - rect.top);
+          absTop = rect.top + top;
+        }
+
+        // Final clamp to container in case viewport clamp pushed out
+        if (left + boxW > viewW) left = Math.max(0, viewW - boxW);
+        if (top + boxH > viewH) top = Math.max(0, viewH - boxH);
+
+        return [left, top];
+      },
       formatter: tooltipFormatter
     },
     legend: legends,

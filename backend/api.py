@@ -1049,6 +1049,27 @@ def api_cleanup_zig_signals(body: DateBody = Body(default=DateBody())):
         "signal_changes": cleanup_result["signal_changes"]
     }
 
+class ZigRebuildRangeBody(BaseModel):
+    start_date: str = Field(..., description="开始日期 YYYY-MM-DD")
+    end_date: str = Field(..., description="结束日期 YYYY-MM-DD")
+    ts_codes: Optional[List[str]] = Field(None, description="可选，仅重建这些标的")
+
+@app.post("/api/signal/rebuild-zig-range")
+def api_rebuild_zig_range(body: ZigRebuildRangeBody):
+    """
+    重建区间 ZIG 信号：
+    1) 删除 [start_date, end_date] 内所有（或指定标的的）ZIG_BUY/ZIG_SELL
+    2) 按交易日逐日重建，并保证 Zig 买卖交替逻辑（同类连发保留新信号）
+    """
+    from .services.signal_svc import TdxZigSignalGenerator
+    try:
+        res = TdxZigSignalGenerator.rebuild_zig_signals_for_period(
+            body.start_date, body.end_date, body.ts_codes
+        )
+        return {"message": "ZIG区间重建完成", **res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class SyncBody(BaseModel):
     date: Optional[str] = None      # YYYYMMDD；不传则今天
     recalc: bool = False            # NEW: 同步后是否自动重算

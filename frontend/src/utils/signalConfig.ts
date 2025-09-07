@@ -53,23 +53,23 @@ export const SIGNAL_CONFIG: Record<SignalType, SignalConfig> = {
     offsetMultiplier: 1.01 
   },
   ZIG_BUY: { 
-    label: "ZIG买入", 
+    label: "买点", 
     color: "#52c41a", 
     description: "ZIG转向买入信号", 
-    emoji: "🔀", 
+    emoji: "", 
     symbol: "triangle", 
     position: "top", 
-    offsetMultiplier: 0.05
+    offsetMultiplier: 0.8
   },
   ZIG_SELL: { 
-    label: "ZIG卖出", 
+    label: "卖点", 
     color: "#ff4d4f", 
     description: "ZIG转向卖出信号", 
-    emoji: "🔄", 
+    emoji: "", 
     symbol: "triangle", 
     symbolRotate: 180, 
     position: "top", 
-    offsetMultiplier: 0.05
+    offsetMultiplier: 0.8
   },
 };
 
