@@ -184,3 +184,14 @@ export type WatchlistItem = {
   last_price_date?: string | null;
   has_position?: boolean; // 是否已持仓
 };
+
+// 按月盈亏统计
+export type MonthlyPnlStats = {
+  month: string;          // YYYY-MM
+  total_pnl: number;      // 总盈亏
+  profit: number;         // 盈利总额
+  loss: number;           // 亏损总额  
+  trade_count: number;    // 交易次数
+  profit_count: number;   // 盈利交易次数
+  loss_count: number;     // 亏损交易次数
+};

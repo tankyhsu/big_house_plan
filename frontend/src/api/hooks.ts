@@ -1,5 +1,5 @@
 import client from "./client";
-import type { DashboardResp, CategoryRow, PositionRow, SignalRow, TxnCreate, PositionStatus, KlineConfig, WatchlistItem } from "./types";
+import type { DashboardResp, CategoryRow, PositionRow, SignalRow, TxnCreate, PositionStatus, KlineConfig, WatchlistItem, MonthlyPnlStats } from "./types";
 
 export async function fetchDashboard(date: string): Promise<DashboardResp> {
   const { data } = await client.get("/api/dashboard", { params: { date } });
@@ -75,6 +75,11 @@ export async function postSyncPrices(date: string) {
 export async function createTxn(payload: TxnCreate) {
   const { data } = await client.post("/api/txn/create", payload);
   return data;
+}
+
+export async function fetchMonthlyPnlStats(): Promise<MonthlyPnlStats[]> {
+  const { data } = await client.get("/api/txn/monthly-stats");
+  return data.items;
 }
 
 import type { PositionRaw } from "./types";

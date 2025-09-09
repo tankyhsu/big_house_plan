@@ -312,7 +312,7 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
                           f"生成{zig_cleanup_result['generated_signals']}个新信号")
                           
                 # 将ZIG信号处理结果添加到日志
-                log.set_context({
+                log.set_payload({
                     "zig_signals_processed": zig_cleanup_result["processed_instruments"],
                     "zig_signals_deleted": zig_cleanup_result["deleted_signals"], 
                     "zig_signals_generated": zig_cleanup_result["generated_signals"]

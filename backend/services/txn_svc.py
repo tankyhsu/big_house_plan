@@ -163,9 +163,10 @@ def create_txn(data: dict, log: LogContext) -> dict:
             mirror_action, mirror_abs_shares = compute_cash_mirror(action, data["shares"], price, fee, data.get("amount"))
 
             if mirror_action and mirror_abs_shares > 0:
-                # 写入现金镜像交易（price=1，fee=0），shares 符号随 action 约定
+                # 写入现金镜像交易（统一使用ADJ类型，price=1，fee=0）
+                # shares 符号：正数表示增加现金，负数表示减少现金
                 mirror_shares = mirror_abs_shares if mirror_action == "BUY" else -mirror_abs_shares
-                txn_repo.insert_txn(conn, cash_code, date, mirror_action, mirror_shares, 1.0, None, 0.0,
+                txn_repo.insert_txn(conn, cash_code, date, "ADJ", mirror_shares, 1.0, None, 0.0,
                                     f"AUTO-MIRROR for {ts_code} {action}", orig_id)
                 # 更新现金持仓
                 cash_row = position_repo.get_position(conn, cash_code)
@@ -175,7 +176,7 @@ def create_txn(data: dict, log: LogContext) -> dict:
                     c_total_cost = round_amount(cash_old_shares * cash_old_cost + mirror_abs_shares * 1.0)
                     c_new_cost = round_price((c_total_cost / c_new_shares) if c_new_shares > 0 else 0.0)
                     position_repo.upsert_position(conn, cash_code, c_new_shares, c_new_cost, date)
-                else:  # SELL 现金
+                else:  # 减少现金
                     c_new_shares = round_shares(cash_old_shares - mirror_abs_shares)
                     # 允许现金为负代表透支；仅在归零时将均价清 0，其余保留旧均价（通常为 1）
                     c_new_cost = 0.0 if abs(c_new_shares) < 0.01 else cash_old_cost
@@ -201,3 +202,96 @@ def bulk_txn(rows: list[dict], log: LogContext) -> dict:
             errs.append({"index": i, "ts_code": r.get("ts_code"), "error": str(e)})
     log.set_after({"ok": ok, "fail": fail})
     return {"ok": ok, "fail": fail, "errors": errs}
+
+def get_monthly_pnl_stats() -> list[dict]:
+    """按月统计交易收益情况，仅统计SELL操作的realized_pnl，排除AUTO-MIRROR现金镜像交易
+    收益 = 数量 × (卖出价 - 成本价) - 手续费
+    返回格式：
+    [
+        {
+            "month": "2025-01", 
+            "total_pnl": 1234.56,  # 总收益
+            "profit": 2000.00,     # 盈利
+            "loss": -765.44,       # 亏损
+            "trade_count": 15,
+            "profit_count": 10,
+            "loss_count": 5
+        },
+        ...
+    ]
+    """
+    _ensure_txn_group_id()
+    with get_conn() as conn:
+        # 通过repo层获取数据
+        codes_result = txn_repo.get_sell_transaction_codes(conn)
+        all_codes = [r["ts_code"] for r in codes_result]
+        
+        if not all_codes:
+            return []
+        
+        # 计算每个SELL交易的净收益，同时收集月份信息
+        monthly_stats = {}
+        
+        for code in all_codes:
+            # 通过repo层获取包含日期的交易记录
+            hist = txn_repo.list_txns_for_code_with_date_ordered(conn, code)
+            pos_shares = 0.0
+            avg_cost = 0.0
+            
+            for h in hist:
+                act = (h["action"] or "").upper()
+                sh = float(h["shares"] or 0.0)
+                pr = float(h["price"] or 0.0)
+                fee = float(h["fee"] or 0.0)
+                trade_date = h["trade_date"]  # YYYY-MM-DD format
+                
+                if act == "BUY":
+                    new_shares = pos_shares + abs(sh)
+                    # 成本包含买入手续费
+                    total_cost = pos_shares * avg_cost + abs(sh) * pr + fee
+                    avg_cost = (total_cost / new_shares) if new_shares > 0 else 0.0
+                    pos_shares = new_shares
+                elif act == "SELL":
+                    qty = abs(sh)
+                    # 恢复原来的计算方式：盈亏 = 数量 × (卖出价 - 成本价) - 手续费
+                    pnl = round_amount(qty * (pr - avg_cost) - fee)
+                    pos_shares = round_shares(pos_shares + sh)  # sh 为负
+                    if pos_shares <= 0.01:
+                        pos_shares = 0.0
+                        avg_cost = 0.0
+                    
+                    # 按月份统计净收益
+                    month = trade_date[:7]  # 提取YYYY-MM
+                    if month not in monthly_stats:
+                        monthly_stats[month] = {
+                            "month": month,
+                            "total_pnl": 0.0,
+                            "profit": 0.0,
+                            "loss": 0.0,
+                            "trade_count": 0,
+                            "profit_count": 0,
+                            "loss_count": 0
+                        }
+                    
+                    stats = monthly_stats[month]
+                    stats["total_pnl"] += pnl
+                    stats["trade_count"] += 1
+                    
+                    if pnl > 0:
+                        stats["profit"] += pnl
+                        stats["profit_count"] += 1
+                    elif pnl < 0:
+                        stats["loss"] += pnl  # pnl已经是负数
+                        stats["loss_count"] += 1
+        
+        # 转换为列表并按月份倒序排列（最新月份在前）
+        result = list(monthly_stats.values())
+        result.sort(key=lambda x: x["month"], reverse=True)
+        
+        # 格式化数字精度
+        for stats in result:
+            stats["total_pnl"] = round_amount(stats["total_pnl"])
+            stats["profit"] = round_amount(stats["profit"])
+            stats["loss"] = round_amount(stats["loss"])
+        
+        return result

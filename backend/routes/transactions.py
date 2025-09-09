@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from ..logs import LogContext
 from ..db import get_conn
-from ..services.txn_svc import create_txn, list_txn
+from ..services.txn_svc import create_txn, list_txn, get_monthly_pnl_stats
 from ..services.calc_svc import calc
 from ..domain.txn_engine import round_price, round_quantity, round_shares, round_amount
 
@@ -129,5 +129,15 @@ def api_txn_bulk(body: BulkTxnReq):
         return {"message": "ok", "ok": ok, "fail": fail, "errors": errs}
     except Exception as e:
         log.write("ERROR", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/txn/monthly-stats")
+def api_txn_monthly_stats():
+    """获取按月统计的交易盈亏情况"""
+    try:
+        stats = get_monthly_pnl_stats()
+        return {"items": stats}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

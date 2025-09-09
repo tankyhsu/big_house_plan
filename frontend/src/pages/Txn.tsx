@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, DatePicker, message, Typography, Alert, Row, Col } from "antd";
+import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, DatePicker, message, Typography, Alert, Row, Col, Card } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite } from "../api/types";
-import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice, lookupInstrument, fetchSettings } from "../api/hooks";
+import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite, MonthlyPnlStats } from "../api/types";
+import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice, lookupInstrument, fetchSettings, fetchMonthlyPnlStats } from "../api/hooks";
 import type { PositionRaw } from "../api/types";
 import { formatQuantity, formatPrice, fmtPct } from "../utils/format";
 import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
@@ -50,6 +50,10 @@ export default function TxnPage() {
   
   // 配置信息（用于投资框架检查）
   const [unitAmount, setUnitAmount] = useState<number>(3000);
+  
+  // 按月盈亏统计
+  const [monthlyStats, setMonthlyStats] = useState<MonthlyPnlStats[]>([]);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const load = async (p = page, s = size) => {
     setLoading(true);
@@ -64,8 +68,21 @@ export default function TxnPage() {
     }
   };
 
+  const loadMonthlyStats = async () => {
+    setStatsLoading(true);
+    try {
+      const stats = await fetchMonthlyPnlStats();
+      setMonthlyStats(stats);
+    } catch (e: any) {
+      message.error(`加载月度统计失败: ${e.message}`);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   useEffect(() => {
     load(1, size);
+    loadMonthlyStats();
     // 预加载：标的、类别、配置
     fetchInstruments().then(setInstOpts).catch(()=>{});
     fetchCategories().then(setCategories).catch(()=>{});
@@ -299,6 +316,7 @@ export default function TxnPage() {
       form.resetFields();
       setPage(1);
       load(1, size);
+      loadMonthlyStats(); // 刷新月度统计
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(e.message || "提交失败");
@@ -350,6 +368,7 @@ export default function TxnPage() {
         form.resetFields();
         setPage(1);
         load(1, size);
+        loadMonthlyStats(); // 刷新月度统计
       }
     } catch (e: any) {
       if (e?.errorFields) return;
@@ -363,6 +382,77 @@ export default function TxnPage() {
       <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
         选择已有标的，或直接输入一个新的代码（例如 510300.SH）。卖出会在后端校验可用持仓。
       </Typography.Paragraph>
+
+      {/* 按月历史收益统计 */}
+      <Card 
+        title="按月历史收益统计" 
+        size="small" 
+        loading={statsLoading}
+        style={{ marginBottom: 16 }}
+        extra={
+          <Button 
+            size="small" 
+            onClick={loadMonthlyStats}
+            loading={statsLoading}
+          >
+            刷新
+          </Button>
+        }
+      >
+        {monthlyStats.length === 0 ? (
+          <Typography.Text type="secondary">暂无卖出交易数据</Typography.Text>
+        ) : (
+          <Row gutter={[16, 8]}>
+            {monthlyStats.slice(0, 6).map((stat) => (
+              <Col key={stat.month} xs={24} sm={12} md={8} lg={6} xl={4}>
+                <div style={{ 
+                  padding: '12px', 
+                  border: '1px solid #f0f0f0', 
+                  borderRadius: '6px',
+                  backgroundColor: stat.total_pnl >= 0 ? '#f6ffed' : '#fff1f0'
+                }}>
+                  <div style={{ 
+                    fontSize: '14px', 
+                    fontWeight: 'bold', 
+                    marginBottom: '8px',
+                    textAlign: 'center'
+                  }}>
+                    {stat.month}
+                  </div>
+                  <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                    <div style={{ 
+                      color: stat.total_pnl >= 0 ? '#52c41a' : '#ff4d4f',
+                      fontWeight: 'bold',
+                      textAlign: 'center',
+                      fontSize: '16px',
+                      marginBottom: '4px'
+                    }}>
+                      {stat.total_pnl >= 0 ? '+' : ''}{formatQuantity(stat.total_pnl)}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#52c41a' }}>收益: {formatQuantity(stat.profit)}</span>
+                      <span>({stat.profit_count}笔)</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#ff4d4f' }}>亏损: {formatQuantity(stat.loss)}</span>
+                      <span>({stat.loss_count}笔)</span>
+                    </div>
+                    <div style={{ 
+                      textAlign: 'center', 
+                      marginTop: '4px', 
+                      color: '#666',
+                      borderTop: '1px solid #f0f0f0',
+                      paddingTop: '4px'
+                    }}>
+                      总计 {stat.trade_count} 笔交易
+                    </div>
+                  </div>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        )}
+      </Card>
 
       <Space>
         <Button onClick={() => load(page, size)}>刷新</Button>

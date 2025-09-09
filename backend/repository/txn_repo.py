@@ -42,7 +42,8 @@ def list_txn_page(conn: Connection, page: int, size: int):
 def list_txns_for_code_ordered(conn: Connection, ts_code: str):
     return conn.execute(
         "SELECT rowid AS id, action, shares, price, fee FROM txn "
-        "WHERE ts_code=? ORDER BY trade_date ASC, rowid ASC",
+        "WHERE ts_code=? AND action != 'ADJ' "
+        "ORDER BY trade_date ASC, rowid ASC",
         (ts_code,),
     ).fetchall()
 
@@ -57,3 +58,20 @@ def list_txns_for_code_upto(conn: Connection, ts_code: str, date_dash: str):
 
 def list_txn_codes_distinct(conn: Connection) -> list[str]:
     return [r["ts_code"] for r in conn.execute("SELECT DISTINCT ts_code FROM txn").fetchall()]
+
+def list_txns_for_code_with_date_ordered(conn: Connection, ts_code: str):
+    """获取包含trade_date的交易记录，按时间顺序，排除ADJ类型交易（包含现金镜像交易）"""
+    return conn.execute(
+        "SELECT rowid AS id, action, shares, price, fee, trade_date FROM txn "
+        "WHERE ts_code=? AND action != 'ADJ' "
+        "ORDER BY trade_date ASC, rowid ASC",
+        (ts_code,),
+    ).fetchall()
+
+def get_sell_transaction_codes(conn: Connection):
+    """获取所有有SELL交易的标的代码，排除ADJ类型交易（包含现金镜像交易）"""
+    return conn.execute(
+        "SELECT DISTINCT ts_code FROM txn "
+        "WHERE action = 'SELL' AND action != 'ADJ' "
+        "ORDER BY ts_code"
+    ).fetchall()
