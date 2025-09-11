@@ -88,6 +88,7 @@ This is a **portfolio management system** with FastAPI backend and React fronten
 - `config.yaml` - Main configuration (database path, trading parameters, TuShare token)
 - Environment variable `PORT_DB_PATH` can override database location
 - Test mode uses `test_db_path` configuration
+- Instrument type supports: `STOCK`/`ETF`/`FUND`/`CASH` and now `HK` (Hong Kong stocks via TuShare `hk_daily`)
 
 ## Testing
 

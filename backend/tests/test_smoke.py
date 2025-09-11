@@ -38,9 +38,9 @@ def test_txn_create_with_cash_mirror(client):
         # Original instrument BUY
         orig = rows[0]
         assert orig["ts_code"] == "000001.SZ" and orig["action"] == "BUY"
-        # Cash mirror SELL, amount = 100*10 + 1 = 1001 (as negative shares)
+        # Cash mirror ADJ (unified type for cash mirror transactions), amount = 100*10 + 1 = 1001 (as negative shares)
         mirror = rows[1]
-        assert mirror["ts_code"] == "CASH.CNY" and mirror["action"] == "SELL"
+        assert mirror["ts_code"] == "CASH.CNY" and mirror["action"] == "ADJ"
         assert abs(mirror["shares"] + 1001.0) < 1e-6
         assert mirror["price"] == 1.0
 
@@ -53,5 +53,5 @@ def test_txn_create_with_cash_mirror(client):
 
         pc = conn.execute("SELECT shares, avg_cost FROM position WHERE ts_code=?", ("CASH.CNY",)).fetchone()
         assert pc is not None
-        assert abs(pc["shares"] + 1001.0) < 1e-8  # negative cash allowed
+        assert abs(pc["shares"] + 1001.0) < 1e-8  # negative cash allowed  # negative cash allowed
 

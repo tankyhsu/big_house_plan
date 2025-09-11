@@ -51,12 +51,12 @@ def test_sell_realized_pnl_and_cash_mirror(client):
         assert abs(pos["shares"] - 40.0) < 1e-8
         assert abs(pos["avg_cost"] - 10.02) < 1e-8
 
-        # Mirror for SELL: CASH buy amount = gross-fee = 60*11-1 = 659
+        # Mirror for SELL: CASH ADJ (unified type for cash mirror), amount = gross-fee = 60*11-1 = 659
         rows = conn.execute(
             "SELECT ts_code, action, shares, price FROM txn WHERE ts_code='CASH.CNY' ORDER BY rowid DESC LIMIT 1"
         ).fetchone()
         assert rows is not None
-        assert rows["action"] == "BUY"
+        assert rows["action"] == "ADJ"
         assert abs(rows["shares"] - 659.0) < 1e-8
         assert abs(rows["price"] - 1.0) < 1e-8
 
