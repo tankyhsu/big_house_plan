@@ -4,22 +4,27 @@ from backend.domain.txn_engine import compute_position_after_trade, compute_cash
 
 
 def test_buy_recalculates_avg_cost():
-    ns, nc = compute_position_after_trade(0.0, 0.0, "BUY", 100, 10.0, 1.0)
+    ns, nc, pnl = compute_position_after_trade(0.0, 0.0, "BUY", 100, 10.0, 1.0)
     assert abs(ns - 100.0) < 1e-8
-    assert abs(nc - 10.01) < 1e-8
+    assert abs(nc - 10.01) < 1e-8  # (100*10 + 1) / 100
+    assert pnl == 0.0
 
 
 def test_sell_reduces_shares_keeps_cost_until_zero():
-    ns, nc = compute_position_after_trade(100.0, 10.01, "SELL", 40, 10.5, 2.0)
+    ns, nc, pnl = compute_position_after_trade(100.0, 10.01, "SELL", 40, 10.5, 2.0)
     assert abs(ns - 60.0) < 1e-8
-    assert abs(nc - 10.01) < 1e-8
+    assert abs(nc - 10.01) < 1e-8  # cost unchanged
+    # realized P&L = (10.5 - 10.01) * 40 - 2.0 = 17.6
+    assert abs(pnl - 17.6) < 1e-6
 
 
 def test_sell_over_position_engine_may_go_negative():
     # Engine is pure math; guard is enforced in service layer
-    ns, nc = compute_position_after_trade(10.0, 5.0, "SELL", 20, 6.0, 0.0)
+    ns, nc, pnl = compute_position_after_trade(10.0, 5.0, "SELL", 20, 6.0, 0.0)
     assert ns < 0
-    assert abs(nc - 5.0) < 1e-8 or nc == 0.0
+    assert nc == 5.0  # cost should remain unchanged for negative positions
+    # realized P&L = (6.0 - 5.0) * 20 - 0.0 = 20.0
+    assert abs(pnl - 20.0) < 1e-6
 
 
 def test_cash_mirror_buy_and_sell():
