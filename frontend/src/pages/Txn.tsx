@@ -246,6 +246,13 @@ export default function TxnPage() {
     },
     { title: "数量", dataIndex: "shares", align: "right", width: 100, render: (v) => formatQuantity(v) },
     { title: "价格", dataIndex: "price", align: "right", width: 100, render: (v) => formatPrice(v) },
+    { title: "成本价", align: "right", width: 100, 
+      render: (_, record) => {
+        const position = posRaw.find(p => p.ts_code === record.ts_code);
+        const avgCost = position?.avg_cost;
+        return avgCost != null ? formatPrice(avgCost) : "-";
+      }
+    },
     { title: "费用", dataIndex: "fee", align: "right", width: 100, render: (v) => formatQuantity(v) },
     { title: "本次收益", dataIndex: "realized_pnl", align: "right", width: 120,
       render: (v, row) => {

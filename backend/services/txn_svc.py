@@ -39,29 +39,7 @@ def list_txn(page:int, size:int) -> tuple[int, list[dict]]:
         codes = sorted(list({r["ts_code"] for r in items}))
         name_map: dict[str, str] = instrument_repo.name_map_for(conn, codes)
 
-        # 计算每个 SELL 交易的 realized PnL，构建 id->pnl 映射
-        pnl_map: dict[int, float] = {}
-        for code in codes:
-            # 拉该代码的全历史交易，按时间顺序
-            hist = txn_repo.list_txns_for_code_ordered(conn, code)
-            pos_shares = 0.0
-            avg_cost = 0.0
-            for h in hist:
-                act = (h["action"] or "").upper()
-                sh = float(h["shares"] or 0.0)
-                pr = float(h["price"] or 0.0)
-                fee = float(h["fee"] or 0.0)
-                
-                # 使用 txn_engine 的标准逻辑
-                new_shares, new_avg_cost, realized_pnl = compute_position_after_trade(
-                    pos_shares, avg_cost, act, abs(sh), pr, fee
-                )
-                
-                if act == "SELL":
-                    pnl_map[int(h["id"])] = realized_pnl
-                
-                pos_shares = new_shares
-                avg_cost = new_avg_cost
+        # realized_pnl 现在存储在数据库中，无需重新计算
 
         # 组装输出，统一处理浮点数精度
         for it in items:
@@ -77,10 +55,9 @@ def list_txn(page:int, size:int) -> tuple[int, list[dict]]:
             if it.get("fee") is not None:
                 it["fee"] = round_amount(float(it["fee"]))
             
-            # 处理 realized_pnl
-            rp = pnl_map.get(int(it["id"]))
-            if rp is not None and (it["action"] or "").upper() == "SELL":
-                it["realized_pnl"] = float(rp)  # rp 已经通过 _round_financial 处理过
+            # 处理 realized_pnl（现在直接来自数据库）
+            if it.get("realized_pnl") is not None:
+                it["realized_pnl"] = round_amount(float(it["realized_pnl"]))
             else:
                 it["realized_pnl"] = None
 
@@ -102,14 +79,23 @@ def create_txn(data: dict, log: LogContext) -> dict:
         raise ValueError("Unsupported action")
 
     with get_conn() as conn:
-        # 1) 写入原始交易（先写入，获取 id，随后设置 group_id=自身 id）
-        orig_id = txn_repo.insert_txn(conn, ts_code, date, action, shares, price, data.get("amount"), fee, data.get("notes",""), None)
-        txn_repo.update_group_id(conn, orig_id, orig_id)
-        # 2) 更新原标的持仓（仅 BUY/SELL）
+        # 1) 获取当前持仓信息（用于计算realized_pnl）
         row = position_repo.get_position(conn, ts_code)
         old_shares, old_cost = (row["shares"], row["avg_cost"]) if row else (0.0, 0.0)
-        realized_pnl = 0.0
+        
+        # 2) 计算realized_pnl（仅对SELL交易）
+        realized_pnl = None
+        if action == "SELL":
+            qty_abs = abs(shares)
+            if old_cost is not None and price is not None:
+                from ..domain.txn_engine import round_amount
+                realized_pnl = round_amount(qty_abs * (price - old_cost) - fee)
+        
+        # 3) 写入原始交易（包含realized_pnl）
+        orig_id = txn_repo.insert_txn(conn, ts_code, date, action, shares, price, data.get("amount"), fee, data.get("notes",""), None, realized_pnl)
+        txn_repo.update_group_id(conn, orig_id, orig_id)
 
+        # 4) 更新原标的持仓（仅 BUY/SELL）
         if action in ("BUY", "SELL"):
             # Position math delegated to domain engine - now returns realized P&L
             qty_abs = abs(shares)
@@ -160,8 +146,8 @@ def create_txn(data: dict, log: LogContext) -> dict:
                 # shares 符号：正数表示增加现金，负数表示减少现金
                 mirror_shares = mirror_abs_shares if mirror_action == "BUY" else -mirror_abs_shares
                 txn_repo.insert_txn(conn, cash_code, date, "ADJ", mirror_shares, 1.0, None, 0.0,
-                                    f"AUTO-MIRROR for {ts_code} {action}", orig_id)
-                # 更新现金持仓 - 使用 txn_engine 标准逻辑
+                                    f"AUTO-MIRROR for {ts_code} {action}", orig_id, None)
+                # 更新现金持仓
                 cash_row = position_repo.get_position(conn, cash_code)
                 cash_old_shares, cash_old_cost = (cash_row["shares"], cash_row["avg_cost"]) if cash_row else (0.0, 0.0)
                 c_new_shares, c_new_cost, _ = compute_position_after_trade(
@@ -197,8 +183,7 @@ def bulk_txn(rows: list[dict], log: LogContext) -> dict:
     return {"ok": ok, "fail": fail, "errors": errs}
 
 def get_monthly_pnl_stats() -> list[dict]:
-    """按月统计交易收益情况，仅统计SELL操作的realized_pnl，排除AUTO-MIRROR现金镜像交易
-    收益 = 数量 × (卖出价 - 成本价) - 手续费
+    """按月统计交易收益情况，直接使用txn表中的realized_pnl数据，仅统计SELL操作
     返回格式：
     [
         {
@@ -215,67 +200,49 @@ def get_monthly_pnl_stats() -> list[dict]:
     """
     _ensure_txn_group_id()
     with get_conn() as conn:
-        # 通过repo层获取数据
-        codes_result = txn_repo.get_sell_transaction_codes(conn)
-        all_codes = [r["ts_code"] for r in codes_result]
+        # 通过repository层获取数据
+        transactions = txn_repo.get_monthly_realized_pnl(conn)
         
-        if not all_codes:
+        if not transactions:
             return []
         
-        # 计算每个SELL交易的净收益，同时收集月份信息
+        # 按月份统计
         monthly_stats = {}
         
-        for code in all_codes:
-            # 通过repo层获取包含日期的交易记录
-            hist = txn_repo.list_txns_for_code_with_date_ordered(conn, code)
-            pos_shares = 0.0
-            avg_cost = 0.0
+        for txn in transactions:
+            trade_date = txn[0]  # YYYY-MM-DD format
+            realized_pnl = float(txn[1])
             
-            for h in hist:
-                act = (h["action"] or "").upper()
-                sh = float(h["shares"] or 0.0)
-                pr = float(h["price"] or 0.0)
-                fee = float(h["fee"] or 0.0)
-                trade_date = h["trade_date"]  # YYYY-MM-DD format
-                
-                # 使用 txn_engine 的标准逻辑
-                new_shares, new_avg_cost, realized_pnl = compute_position_after_trade(
-                    pos_shares, avg_cost, act, abs(sh), pr, fee
-                )
-                
-                if act == "SELL":
-                    # 按月份统计净收益
-                    month = trade_date[:7]  # 提取YYYY-MM
-                    if month not in monthly_stats:
-                        monthly_stats[month] = {
-                            "month": month,
-                            "total_pnl": 0.0,
-                            "profit": 0.0,
-                            "loss": 0.0,
-                            "trade_count": 0,
-                            "profit_count": 0,
-                            "loss_count": 0
-                        }
-                    
-                    stats = monthly_stats[month]
-                    stats["total_pnl"] += realized_pnl
-                    stats["trade_count"] += 1
-                    
-                    if realized_pnl > 0:
-                        stats["profit"] += realized_pnl
-                        stats["profit_count"] += 1
-                    elif realized_pnl < 0:
-                        stats["loss"] += realized_pnl  # realized_pnl已经是负数
-                        stats["loss_count"] += 1
-                
-                pos_shares = new_shares
-                avg_cost = new_avg_cost
+            # 提取月份
+            month = trade_date[:7]  # YYYY-MM
+            
+            if month not in monthly_stats:
+                monthly_stats[month] = {
+                    "month": month,
+                    "total_pnl": 0.0,
+                    "profit": 0.0,
+                    "loss": 0.0,
+                    "trade_count": 0,
+                    "profit_count": 0,
+                    "loss_count": 0
+                }
+            
+            stats = monthly_stats[month]
+            stats["total_pnl"] += realized_pnl
+            stats["trade_count"] += 1
+            
+            if realized_pnl > 0:
+                stats["profit"] += realized_pnl
+                stats["profit_count"] += 1
+            elif realized_pnl < 0:
+                stats["loss"] += realized_pnl
+                stats["loss_count"] += 1
         
         # 转换为列表并按月份倒序排列（最新月份在前）
         result = list(monthly_stats.values())
         result.sort(key=lambda x: x["month"], reverse=True)
         
-        # 格式化数字精度
+        # 处理精度
         for stats in result:
             stats["total_pnl"] = round_amount(stats["total_pnl"])
             stats["profit"] = round_amount(stats["profit"])

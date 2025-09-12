@@ -37,7 +37,8 @@ CREATE TABLE
     amount REAL,
     fee REAL DEFAULT 0,
     notes TEXT,
-    group_id INTEGER
+    group_id INTEGER,
+    realized_pnl REAL
   );
 
 CREATE TABLE
