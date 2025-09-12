@@ -84,6 +84,109 @@ def api_sync_prices(body: dict = Body(default={})):  # use raw dict for compatib
         raise HTTPException(status_code=500, detail=f"sync failed: {str(e)}")
 
 
+@router.post("/api/sync-prices-enhanced")
+def api_sync_prices_enhanced(body: dict = Body(default={})):
+    """
+    增强的价格同步接口：自动检测并补齐过去几天缺失的价格数据
+    
+    Request body:
+    - lookback_days: int, 向前检查的天数，默认7天
+    - ts_codes: list[str], 可选，指定要同步的标的代码列表
+    - recalc: bool, 是否在同步完成后自动重算，默认true
+    
+    Response:
+    - message: 操作结果描述
+    - dates_processed: 处理的日期数量
+    - total_found/updated/skipped: 数据统计
+    - missing_summary: {date: missing_count} 各日期缺失数据汇总
+    - details: 详细的同步结果
+    - recalc_performed: 是否执行了重算
+    """
+    from ..services.pricing_svc import sync_prices_enhanced
+    
+    lookback_days = body.get("lookback_days", 7)
+    ts_codes = body.get("ts_codes")
+    recalc = body.get("recalc", True)
+    
+    try:
+        # 验证参数
+        if not isinstance(lookback_days, int) or lookback_days < 1 or lookback_days > 30:
+            raise HTTPException(
+                status_code=400, 
+                detail="lookback_days must be between 1 and 30"
+            )
+        
+        if ts_codes is not None and not isinstance(ts_codes, list):
+            raise HTTPException(
+                status_code=400,
+                detail="ts_codes must be a list of strings"
+            )
+        
+        result = sync_prices_enhanced(
+            lookback_days=lookback_days,
+            ts_codes=ts_codes,
+            recalc=bool(recalc)
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Enhanced price sync failed: {str(e)}"
+        )
+
+
+@router.get("/api/missing-prices")
+def api_get_missing_prices(lookback_days: int = 7, ts_codes: str = None):
+    """
+    查询缺失的价格数据情况（不执行同步）
+    
+    Query parameters:
+    - lookback_days: 向前检查的天数，默认7天
+    - ts_codes: 可选，逗号分隔的标的代码列表
+    
+    Response:
+    - missing_by_date: {date: [missing_ts_codes]} 各日期缺失的标的列表
+    - summary: {date: count} 各日期缺失数量汇总
+    - total_missing_dates: 有缺失数据的日期总数
+    """
+    from ..services.pricing_svc import find_missing_price_dates
+    
+    try:
+        # 验证参数
+        if lookback_days < 1 or lookback_days > 30:
+            raise HTTPException(
+                status_code=400,
+                detail="lookback_days must be between 1 and 30"
+            )
+        
+        # 解析ts_codes
+        codes_list = None
+        if ts_codes:
+            codes_list = [code.strip() for code in ts_codes.split(",") if code.strip()]
+        
+        missing_by_date = find_missing_price_dates(lookback_days, codes_list)
+        
+        return {
+            "missing_by_date": missing_by_date,
+            "summary": {date: len(codes) for date, codes in missing_by_date.items()},
+            "total_missing_dates": len(missing_by_date),
+            "lookback_days": lookback_days,
+            "checked_codes_count": len(codes_list) if codes_list else "all_active"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check missing prices: {str(e)}"
+        )
+
+
 @router.get("/api/price/last")
 def api_price_last(ts_code: str = Query(...), date: str | None = Query(None, pattern=r"^\d{8}$")):
     from datetime import datetime as _dt

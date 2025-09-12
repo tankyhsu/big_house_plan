@@ -249,24 +249,20 @@ class TdxStructureSignalGenerator:
     @staticmethod
     def calculate_structure_signals(ts_code: str, trade_date: str) -> tuple[bool, bool]:
         """
-        计算某个标的在指定日期的九转买入/九转卖出信号
+        计算某个标的在指定日期的结构买入/卖出信号
         
         Args:
             ts_code: 标的代码
             trade_date: 交易日期
             
         Returns:
-            (是否九转买入, 是否九转卖出)
+            (是否买入信号, 是否卖出信号)
         """
         with get_conn() as conn:
-            # 获取该标的前30天的价格数据（确保有足够数据计算）
-            price_data = conn.execute("""
-                SELECT trade_date, close
-                FROM price_eod 
-                WHERE ts_code = ? AND trade_date <= ?
-                ORDER BY trade_date DESC
-                LIMIT 30
-            """, (ts_code, trade_date)).fetchall()
+            from ..repository import price_repo
+            
+            # 使用repository方法获取价格数据
+            price_data = price_repo.get_price_closes_for_signal(conn, ts_code, trade_date, days=30)
             
             if len(price_data) < 15:  # 至少需要15天数据
                 return False, False
@@ -650,14 +646,10 @@ class TdxZigSignalGenerator:
             (是否买入信号, 是否卖出信号)
         """
         with get_conn() as conn:
-            # 获取该标的前60天的价格数据（确保有足够数据计算）
-            price_data = conn.execute("""
-                SELECT trade_date, close
-                FROM price_eod 
-                WHERE ts_code = ? AND trade_date <= ?
-                ORDER BY trade_date DESC
-                LIMIT 60
-            """, (ts_code, trade_date)).fetchall()
+            from ..repository import price_repo
+            
+            # 使用repository方法获取价格数据（前60天确保有足够数据计算）
+            price_data = price_repo.get_price_closes_for_signal(conn, ts_code, trade_date, days=60)
             
             if len(price_data) < 10:  # 至少需要10天数据
                 return False, False
@@ -901,38 +893,36 @@ class TdxZigSignalGenerator:
             包含价格、ZIG指标、信号的详细数据字典
         """
         with get_conn() as conn:
-            # 获取指定时间段前60天到结束日期的所有价格数据
-            extended_start = conn.execute("""
-                SELECT trade_date 
-                FROM price_eod 
-                WHERE ts_code = ? AND trade_date <= ?
-                ORDER BY trade_date DESC 
-                LIMIT 60
-            """, (ts_code, start_date)).fetchall()
+            from ..repository import price_repo
+            from datetime import datetime, timedelta
             
-            if extended_start:
-                actual_start = extended_start[-1][0]
-            else:
-                actual_start = start_date
+            # 扩展开始日期以获取足够的历史数据
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=60)
+            actual_start = start_dt.strftime("%Y-%m-%d")
             
-            # 获取价格数据
-            price_data = conn.execute("""
-                SELECT trade_date, open, high, low, close, vol
-                FROM price_eod 
-                WHERE ts_code = ? AND trade_date BETWEEN ? AND ?
-                ORDER BY trade_date ASC
-            """, (ts_code, actual_start, end_date)).fetchall()
+            # 使用repository方法获取OHLCV数据
+            price_data = price_repo.get_ohlcv_for_signal(conn, ts_code, end_date, days=200)
             
             if not price_data:
                 return {"error": f"未找到 {ts_code} 在 {start_date} 到 {end_date} 的价格数据"}
             
+            # 过滤到指定范围并按日期正序排列
+            price_data.reverse()  # 转为正序
+            filtered_data = []
+            for row in price_data:
+                if actual_start <= row[0] <= end_date:
+                    filtered_data.append(row)
+            
+            if not filtered_data:
+                return {"error": f"指定时间范围内无数据"}
+            
             # 提取数据
-            dates = [row[0] for row in price_data]
-            opens = [float(row[1]) for row in price_data]
-            highs = [float(row[2]) for row in price_data]
-            lows = [float(row[3]) for row in price_data]
-            closes = [float(row[4]) for row in price_data]
-            volumes = [int(row[5]) for row in price_data]
+            dates = [row[0] for row in filtered_data]
+            opens = [float(row[1]) if row[1] is not None else 0.0 for row in filtered_data]
+            highs = [float(row[2]) if row[2] is not None else 0.0 for row in filtered_data]
+            lows = [float(row[3]) if row[3] is not None else 0.0 for row in filtered_data]
+            closes = [float(row[4]) if row[4] is not None else 0.0 for row in filtered_data]
+            volumes = [int(row[5]) if row[5] is not None else 0 for row in filtered_data]
             
             # 计算ZIG指标
             zig_values = TdxZigSignalGenerator.calculate_zig_indicator(closes, turn_percent=10.0)

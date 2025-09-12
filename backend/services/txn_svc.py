@@ -20,6 +20,66 @@ def _ensure_txn_group_id():
         # 下次调用会再次尝试。
         pass
 
+def detect_t_trades(conn, ts_code: str, trade_date: str, action: str, shares: float, tolerance: float = 0.001) -> int | None:
+    """
+    检测T+0操作并返回匹配的交易ID
+    
+    Args:
+        conn: 数据库连接
+        ts_code: 标的代码
+        trade_date: 交易日期
+        action: 当前交易动作 (BUY/SELL)
+        shares: 交易数量（绝对值）
+        tolerance: 数量匹配容差
+        
+    Returns:
+        匹配的交易ID，如果没有匹配则返回None
+    """
+    # 查找同日同标的反向操作
+    opposite_action = "SELL" if action == "BUY" else "BUY"
+    
+    query = """
+        SELECT id, shares, group_id 
+        FROM txn 
+        WHERE ts_code = ? 
+            AND trade_date = ? 
+            AND action = ?
+            AND (group_id IS NULL OR group_id = id)  -- 只匹配未被T操作分组的交易
+        ORDER BY id ASC
+    """
+    
+    rows = conn.execute(query, (ts_code, trade_date, opposite_action)).fetchall()
+    
+    for row in rows:
+        existing_shares = abs(float(row[1]))
+        # 检查数量是否匹配（允许小误差）
+        if abs(existing_shares - shares) <= tolerance:
+            return row[0]  # 返回匹配的交易ID
+    
+    return None
+
+
+def create_t_trade_group(conn, txn_id1: int, txn_id2: int) -> int:
+    """
+    为T操作创建新的分组
+    
+    Args:
+        conn: 数据库连接
+        txn_id1: 第一笔交易ID
+        txn_id2: 第二笔交易ID
+        
+    Returns:
+        新创建的group_id
+    """
+    # 使用较小的ID作为group_id（确保唯一性）
+    group_id = min(txn_id1, txn_id2)
+    
+    # 更新两笔交易的group_id
+    conn.execute("UPDATE txn SET group_id = ? WHERE id IN (?, ?)", 
+                (group_id, txn_id1, txn_id2))
+    
+    return group_id
+
 def list_txn(page:int, size:int) -> tuple[int, list[dict]]:
     """分页查询交易流水，并补充：
     - name: instrument.name
@@ -91,11 +151,24 @@ def create_txn(data: dict, log: LogContext) -> dict:
                 from ..domain.txn_engine import round_amount
                 realized_pnl = round_amount(qty_abs * (price - old_cost) - fee)
         
-        # 3) 写入原始交易（包含realized_pnl）
+        # 3) T操作检测（仅对BUY/SELL交易）
+        t_trade_match_id = None
+        if action in ("BUY", "SELL"):
+            t_trade_match_id = detect_t_trades(conn, ts_code, date, action, abs(shares))
+        
+        # 4) 写入原始交易（包含realized_pnl）
         orig_id = txn_repo.insert_txn(conn, ts_code, date, action, shares, price, data.get("amount"), fee, data.get("notes",""), None, realized_pnl)
-        txn_repo.update_group_id(conn, orig_id, orig_id)
+        
+        # 5) 处理T操作分组
+        if t_trade_match_id:
+            # 发现T操作，创建分组
+            group_id = create_t_trade_group(conn, orig_id, t_trade_match_id)
+            log.info(f"T+0 operation detected: grouped transactions {orig_id} and {t_trade_match_id} with group_id {group_id}")
+        else:
+            # 普通交易，使用自身ID作为group_id
+            txn_repo.update_group_id(conn, orig_id, orig_id)
 
-        # 4) 更新原标的持仓（仅 BUY/SELL）
+        # 6) 更新原标的持仓（仅 BUY/SELL）
         if action in ("BUY", "SELL"):
             # Position math delegated to domain engine - now returns realized P&L
             qty_abs = abs(shares)
@@ -115,7 +188,7 @@ def create_txn(data: dict, log: LogContext) -> dict:
                         # 忽略添加失败的情况（比如instrument不存在）
                         pass
 
-        # 3) 现金镜像 / 现金直接调整
+        # 7) 现金镜像 / 现金直接调整
         cfg = get_config()
         cash_code = str(cfg.get("cash_ts_code") or "CASH.CNY")
         # 查询当前标的类型，若为 CASH 则不做镜像
@@ -161,7 +234,8 @@ def create_txn(data: dict, log: LogContext) -> dict:
         "ts_code": ts_code, 
         "shares": pos["shares"], 
         "avg_cost": pos["avg_cost"],
-        "realized_pnl": realized_pnl  # 新增实现盈亏返回值
+        "realized_pnl": realized_pnl,  # 新增实现盈亏返回值
+        "t_trade_detected": t_trade_match_id is not None  # 新增T操作检测标识
     }
     log.set_entity("TXN", f"{orig_id}")
     log.set_after({"position": result})

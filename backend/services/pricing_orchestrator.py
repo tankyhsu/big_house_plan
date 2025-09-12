@@ -340,3 +340,26 @@ def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext
     
     log.set_after(result)
     return result
+
+def _save_price_bars(bars: list[dict], updated_codes: list[str]) -> tuple[int, int]:
+    """
+    保存价格数据并更新计数
+    
+    Args:
+        bars: 价格数据列表
+        updated_codes: 更新的代码列表（用于追加）
+        
+    Returns:
+        tuple: (found_count, updated_count)
+    """
+    if not bars:
+        return 0, 0
+    
+    with get_conn() as conn:
+        price_repo.upsert_price_eod_many(conn, bars)
+    
+    # 更新代码列表
+    for bar in bars:
+        updated_codes.append(bar["ts_code"])
+    
+    return len(bars), len(bars)
