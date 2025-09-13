@@ -56,3 +56,17 @@ def api_signal_all(
 ):
     return list_signal_all(type, ts_code, start_date, end_date, limit)
 
+@router.get("/api/series/position")
+def api_position_series(
+    start: str = Query(..., pattern=r"^\d{8}$"),
+    end: str = Query(..., pattern=r"^\d{8}$"),
+    ts_codes: str = Query(..., description="Comma-separated ts_codes"),
+):
+    try:
+        from ..services.dashboard_svc import get_position_series
+        codes = [code.strip() for code in ts_codes.split(",") if code.strip()]
+        items = get_position_series(start, end, codes)
+        return {"items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

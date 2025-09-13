@@ -21,15 +21,15 @@ export function buildTradeMarkers(params: {
         position: 'top',
         formatter: '买入',
         textStyle: {
-          color: upColor,
+          color: downColor,
           fontSize: 11,
           fontWeight: 'bold',
           backgroundColor: '#fff',
           padding: [1, 3],
           borderRadius: 3,
-          borderColor: upColor,
+          borderColor: downColor,
           borderWidth: 1,
-          shadowColor: upColor,
+          shadowColor: downColor,
           shadowBlur: 3,
           shadowOffsetY: 1
         }
@@ -38,10 +38,10 @@ export function buildTradeMarkers(params: {
     symbol: 'triangle', 
     symbolSize: 10, 
     itemStyle: { 
-      color: upColor,
+      color: downColor,
       borderColor: '#fff',
       borderWidth: 2,
-      shadowColor: upColor,
+      shadowColor: downColor,
       shadowBlur: 6,
       shadowOffsetY: 2
     }, 
@@ -61,15 +61,15 @@ export function buildTradeMarkers(params: {
         position: 'bottom',
         formatter: '卖出',
         textStyle: {
-          color: downColor,
+          color: upColor,
           fontSize: 11,
           fontWeight: 'bold',
           backgroundColor: '#fff',
           padding: [1, 3],
           borderRadius: 3,
-          borderColor: downColor,
+          borderColor: upColor,
           borderWidth: 1,
-          shadowColor: downColor,
+          shadowColor: upColor,
           shadowBlur: 3,
           shadowOffsetY: 1
         }
@@ -79,10 +79,10 @@ export function buildTradeMarkers(params: {
     symbolRotate: 180, 
     symbolSize: 10, 
     itemStyle: { 
-      color: downColor,
+      color: upColor,
       borderColor: '#fff',
       borderWidth: 2,
-      shadowColor: downColor,
+      shadowColor: upColor,
       shadowBlur: 6,
       shadowOffsetY: 2
     }, 

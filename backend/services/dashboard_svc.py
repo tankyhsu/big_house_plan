@@ -282,3 +282,67 @@ def create_manual_signal_extended(
         signal_type=type,
         message=message
     )
+
+
+def get_position_series(start_yyyymmdd: str, end_yyyymmdd: str, ts_codes: list[str]) -> list[dict]:
+    """
+    获取指定标的在时间范围内的持仓市值历史序列
+    基于当前持仓数据和历史价格重建历史市值
+    """
+    from ..db import get_conn
+    from .utils import yyyyMMdd_to_dash
+    import pandas as pd
+    
+    if not ts_codes:
+        return []
+    
+    # 构建日期范围
+    start_date = yyyyMMdd_to_dash(start_yyyymmdd)
+    end_date = yyyyMMdd_to_dash(end_yyyymmdd)
+    
+    with get_conn() as conn:
+        # 获取当前持仓和标的信息
+        placeholders = ",".join("?" * len(ts_codes))
+        positions = conn.execute(f"""
+            SELECT p.ts_code, p.shares, p.avg_cost, i.name
+            FROM position p
+            JOIN instrument i ON i.ts_code = p.ts_code
+            WHERE p.ts_code IN ({placeholders}) AND p.shares > 0
+        """, ts_codes).fetchall()
+        
+        if not positions:
+            return []
+        
+        # 获取历史价格数据
+        price_data = conn.execute(f"""
+            SELECT ts_code, trade_date, close
+            FROM price_eod
+            WHERE ts_code IN ({placeholders}) 
+            AND trade_date >= ? AND trade_date <= ?
+            ORDER BY ts_code, trade_date
+        """, ts_codes + [start_date, end_date]).fetchall()
+    
+    # 转换为DataFrame便于处理
+    pos_df = pd.DataFrame([dict(r) for r in positions])
+    price_df = pd.DataFrame([dict(r) for r in price_data])
+    
+    result = []
+    
+    for _, pos in pos_df.iterrows():
+        ts_code = pos['ts_code']
+        shares = pos['shares']
+        name = pos['name']
+        
+        # 获取该标的的价格历史
+        code_prices = price_df[price_df['ts_code'] == ts_code]
+        
+        for _, price_row in code_prices.iterrows():
+            market_value = shares * price_row['close']
+            result.append({
+                "date": price_row['trade_date'],
+                "ts_code": ts_code,
+                "name": name,
+                "market_value": round(market_value, 2)
+            })
+    
+    return sorted(result, key=lambda x: (x['ts_code'], x['date']))
