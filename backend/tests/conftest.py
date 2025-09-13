@@ -54,10 +54,9 @@ def _clean_db(tmp_db_path):
         "instrument",
         "category",
         "price_eod",
-        "portfolio_daily",
-        "category_daily",
         "signal",
         "config",
+        # portfolio_daily and category_daily tables removed
     ]
     conn = sqlite3.connect(tmp_db_path)
     try:

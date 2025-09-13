@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from .config_svc import get_config
 from ..providers.tushare_provider import TuShareProvider
 from .pricing_orchestrator import sync_prices as orchestrate
 
 def sync_prices_tushare(
     trade_date: str,
-    log: LogContext,
+    log: OperationLogContext,
     ts_codes: list[str | None] = None,
     fund_rate_per_min: int | None = None,
 ) -> dict:
@@ -90,10 +90,10 @@ def sync_prices_enhanced(
         dict: 同步结果统计
     """
     from datetime import datetime
-    from ..logs import LogContext
+    from ..logs import OperationLogContext
     from .calc_svc import calc
     
-    log = LogContext("SYNC_PRICES_ENHANCED")
+    log = OperationLogContext("SYNC_PRICES_ENHANCED")
     log.set_payload({
         "lookback_days": lookback_days, 
         "ts_codes_count": len(ts_codes) if ts_codes else None,
@@ -123,7 +123,7 @@ def sync_prices_enhanced(
         
         for date_yyyymmdd in sorted(missing_by_date.keys(), reverse=True):  # 从最近的日期开始
             missing_codes = missing_by_date[date_yyyymmdd]
-            date_log = LogContext(f"SYNC_ENHANCED_{date_yyyymmdd}")
+            date_log = OperationLogContext(f"SYNC_ENHANCED_{date_yyyymmdd}")
             
             # 只同步缺失的标的
             sync_result = sync_prices_tushare(date_yyyymmdd, date_log, missing_codes)
@@ -144,7 +144,7 @@ def sync_prices_enhanced(
                 try:
                     # 转换为YYYYMMDD格式进行重算
                     date_yyyymmdd = date_dash.replace("-", "")
-                    calc(date_yyyymmdd, LogContext(f"RECALC_{date_yyyymmdd}"))
+                    calc(date_yyyymmdd, OperationLogContext(f"RECALC_{date_yyyymmdd}"))
                 except Exception as e:
                     log.write("WARN", f"recalc_failed_{date_dash}: {str(e)}")
         

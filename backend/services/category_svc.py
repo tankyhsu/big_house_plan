@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from ..db import get_conn
-from ..logs import LogContext
+from ..logs import OperationLogContext
 
-def create_category(name: str, sub_name: str, target_units: float, log: LogContext) -> int:
+def create_category(name: str, sub_name: str, target_units: float, log: OperationLogContext) -> int:
     with get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO category(name, sub_name, target_units) VALUES(?,?,?)",
@@ -23,7 +23,7 @@ def list_categories() -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def update_category(category_id: int, *, sub_name: str | None = None, target_units: float | None = None, log: LogContext) -> dict:
+def update_category(category_id: int, *, sub_name: str | None = None, target_units: float | None = None, log: OperationLogContext) -> dict:
     """
     Update editable fields of a category. Major category `name` is immutable.
     Editable fields: sub_name (2nd level), target_units.

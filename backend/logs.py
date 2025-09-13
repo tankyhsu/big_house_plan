@@ -29,7 +29,7 @@ def ensure_log_schema():
         conn.executescript(DDL)
         conn.commit()
 
-class LogContext:
+class OperationLogContext:
     def __init__(self, action: str, user: str = "owner"):
         self.action = action
         self.user = user
@@ -74,7 +74,7 @@ class LogContext:
             )
             conn.commit()
 
-def search_logs(q: str | None, action: str | None, ts_from: str | None, ts_to: str | None, page:int, size:int):
+def search_operation_logs(q: str | None, action: str | None, ts_from: str | None, ts_to: str | None, page:int, size:int):
     where = []
     params = {}
     if q:

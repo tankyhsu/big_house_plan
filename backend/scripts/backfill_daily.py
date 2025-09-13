@@ -18,7 +18,7 @@ if __name__ == "__main__" and __package__ is None:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))  # project root
 
 from backend.db import get_conn
-from backend.logs import LogContext
+from backend.logs import OperationLogContext
 from backend.services.utils import yyyyMMdd_to_dash
 from backend.services.calc_svc import calc
 from backend.services.pricing_svc import sync_prices_tushare
@@ -193,10 +193,10 @@ def main():
                 if not target_codes:
                     print("[backfill] prices exist for all targets; skip sync")
                 else:
-                    log_sync = LogContext("BACKFILL_SYNC")
+                    log_sync = OperationLogContext("BACKFILL_SYNC")
                     res = orch_sync(ymd, provider, log_sync, ts_codes=target_codes)
                     print(f"[backfill] sync(orch) result: {res} (requested={len(target_codes)})")
-            log_calc = LogContext("BACKFILL_CALC")
+            log_calc = OperationLogContext("BACKFILL_CALC")
             calc(ymd, log_calc)
             print(f"[backfill] calc done for {dash_date}")
             total += 1

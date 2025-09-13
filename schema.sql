@@ -74,29 +74,11 @@ CREATE TABLE
     opening_date TEXT
   );
 
-CREATE TABLE
-  IF NOT EXISTS portfolio_daily (
-    trade_date TEXT NOT NULL,
-    ts_code TEXT NOT NULL,
-    market_value REAL NOT NULL,
-    cost REAL NOT NULL,
-    unrealized_pnl REAL NOT NULL,
-    ret REAL,
-    category_id INTEGER,
-    PRIMARY KEY (trade_date, ts_code)
-  );
-
-CREATE TABLE
-  IF NOT EXISTS category_daily (
-    trade_date TEXT NOT NULL,
-    category_id INTEGER NOT NULL,
-    market_value REAL NOT NULL,
-    cost REAL NOT NULL,
-    pnl REAL NOT NULL,
-    ret REAL,
-    overweight INTEGER DEFAULT 0,
-    PRIMARY KEY (trade_date, category_id)
-  );
+-- portfolio_daily and category_daily tables removed
+-- All portfolio and category data is now calculated dynamically from:
+-- - position table (current holdings)
+-- - price_eod table (price data)
+-- This simplifies the data model and ensures single source of truth
 
 CREATE TABLE
   IF NOT EXISTS signal (

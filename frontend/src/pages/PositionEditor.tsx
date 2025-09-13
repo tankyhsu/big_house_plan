@@ -302,7 +302,7 @@ export default function PositionEditor() {
 
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-      <Typography.Title level={3} style={{ margin: 0 }}>持仓编辑</Typography.Title>
+      <Typography.Title level={3} style={{ margin: 0 }}>持仓管理</Typography.Title>
       <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
         用于初始化或纠错。日常变动请使用“交易”功能，便于复盘与审计。
       </Typography.Paragraph>

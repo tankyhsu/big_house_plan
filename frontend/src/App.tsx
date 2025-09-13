@@ -36,7 +36,7 @@ function TopNav() {
           { key: "dashboard", label: <Link to="/">Dashboard</Link> },
           { key: "review", label: <Link to="/review">复盘分析</Link> },
           { key: "signals", icon: <AlertOutlined />, label: <Link to="/signals">交易信号</Link> },
-          { key: "positions", label: <Link to="/positions">持仓编辑</Link> },
+          { key: "positions", label: <Link to="/positions">持仓管理</Link> },
           { key: "watchlist", label: <Link to="/watchlist">自选关注</Link> },
           { key: "txn", label: <Link to="/txn">交易记录</Link> },
           { key: "settings", icon: <SettingOutlined />, label:  <Link to="/settings">系统设置</Link> }

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 # backend/services/instrument_svc.py
 from ..db import get_conn
-from ..logs import LogContext
+from ..logs import OperationLogContext
 import pandas as pd
 from ..repository import instrument_repo
 
-def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: LogContext, sec_type: str | None = None):
+def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: OperationLogContext, sec_type: str | None = None):
     """创建/更新标的；sec_type 可为 STOCK | FUND | CASH 。None 时不覆盖既有值。"""
     def _norm_type(t: str | None) -> str:
         t = (t or "").upper().strip()
@@ -29,7 +29,7 @@ def list_instruments(q: str | None = None, active_only: bool = True) -> list[dic
         return [dict(r) for r in rows]
 
 
-def seed_load(categories_csv: str, instruments_csv: str, log: LogContext) -> dict:
+def seed_load(categories_csv: str, instruments_csv: str, log: OperationLogContext) -> dict:
     """从 CSV 导入类别与标的映射；CSV 要含必要列：
        categories.csv: name, sub_name, target_units
        instruments.csv: ts_code, name, type, currency, category_name, category_sub_name, active(0/1)
@@ -96,6 +96,6 @@ def get_instrument_detail(ts_code: str) -> dict | None:
         return dict(row) if row else None
 
 
-def edit_instrument(ts_code: str, name: str, category_id: int, active: bool, sec_type: str | None, log: LogContext):
+def edit_instrument(ts_code: str, name: str, category_id: int, active: bool, sec_type: str | None, log: OperationLogContext):
     """编辑标的基础信息（等价于 upsert）。"""
     create_instrument(ts_code, name, category_id, active, log, sec_type=sec_type)

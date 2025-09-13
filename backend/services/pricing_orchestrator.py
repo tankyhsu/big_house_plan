@@ -1,6 +1,6 @@
 from __future__ import annotations
 from ..db import get_conn
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from ..repository import instrument_repo, price_repo
 from .utils import yyyyMMdd_to_dash
 
@@ -13,7 +13,7 @@ class PriceProviderPort:
     def fund_nav_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str): ...
 
 
-def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: LogContext, ts_codes: list[str | None] = None) -> dict:
+def sync_prices(date_yyyymmdd: str, provider: PriceProviderPort, log: OperationLogContext, ts_codes: list[str | None] = None) -> dict:
     trade_date = date_yyyymmdd
     used_dates: dict[str, str] = {}
     total_found = total_updated = total_skipped = 0

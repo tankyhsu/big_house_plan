@@ -22,17 +22,16 @@ def api_backup():
             "price_eod",
             "ma_cache",
             "position",
-            "portfolio_daily",
-            "category_daily",
             "signal",
             "watchlist",
             "operation_log",
+            # portfolio_daily and category_daily removed - no longer maintained
         ]
 
         backup_data = {}
         backup_data["timestamp"] = datetime.now().isoformat()
         backup_data["backup_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        backup_data["version"] = "1.1"  # Updated version to reflect new tables
+        backup_data["version"] = "2.0"  # Updated version - removed daily tables
         backup_data["tables"] = {}
         backup_data["summary"] = {}
 
@@ -84,8 +83,6 @@ async def api_restore(file: UploadFile = File(...)):
         business_tables = [
             "operation_log",  # Independent table, no foreign keys
             "signal",         # Independent table
-            "category_daily", # Depends on category
-            "portfolio_daily", # Depends on category
             "position",       # Independent table
             "ma_cache",       # Independent table
             "price_eod",      # Independent table
@@ -94,6 +91,7 @@ async def api_restore(file: UploadFile = File(...)):
             "instrument",    # Depends on category
             "category",      # Referenced by other tables
             "config",        # Independent table
+            # portfolio_daily and category_daily removed - no longer maintained
         ]
 
         with get_conn() as conn:

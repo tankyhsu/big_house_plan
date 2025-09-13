@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from ..services.position_svc import (
     list_positions_raw,
     set_opening_position,
@@ -37,12 +37,12 @@ def api_position_raw(include_zero: bool = True):
 
 @router.post("/api/position/set_opening")
 def api_set_opening_position(body: OpeningPos):
-    log = LogContext("SET_OPENING_POSITION")
+    log = OperationLogContext("SET_OPENING_POSITION")
     log.set_payload(body.dict())
     try:
         after = set_opening_position(body.ts_code, body.shares, body.avg_cost, body.date, log)
         date_yyyymmdd = body.date.replace("-", "")
-        calc(date_yyyymmdd, LogContext("CALC_AFTER_OPENING"))
+        calc(date_yyyymmdd, OperationLogContext("CALC_AFTER_OPENING"))
         log.write("OK")
         return {"message": "ok", "position": after}
     except Exception as e:
@@ -52,13 +52,13 @@ def api_set_opening_position(body: OpeningPos):
 
 @router.post("/api/position/update")
 def api_position_update(body: PositionUpdateBody):
-    log = LogContext("UPDATE_POSITION")
+    log = OperationLogContext("UPDATE_POSITION")
     log.set_payload(body.dict())
     try:
         out = update_position_one(
             body.ts_code, body.shares, body.avg_cost, body.date, body.opening_date
         )
-        calc(body.date.replace("-", ""), LogContext("CALC_AFTER_POSITION_UPDATE"))
+        calc(body.date.replace("-", ""), OperationLogContext("CALC_AFTER_POSITION_UPDATE"))
         log.write("OK")
         return {"message": "ok", "position": out}
     except Exception as e:
@@ -68,7 +68,7 @@ def api_position_update(body: PositionUpdateBody):
 
 @router.post("/api/position/delete")
 def api_position_delete(ts_code: str):
-    log = LogContext("DELETE_POSITION")
+    log = OperationLogContext("DELETE_POSITION")
     log.set_payload({"ts_code": ts_code})
     try:
         delete_position(ts_code, log)

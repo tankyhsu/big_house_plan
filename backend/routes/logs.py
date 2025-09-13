@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ..logs import search_logs
+from ..logs import search_operation_logs
 
 router = APIRouter()
 
@@ -16,6 +16,6 @@ def api_logs_search(
     ts_from: str | None = None,
     ts_to: str | None = None,
 ):
-    total, items = search_logs(query, action, ts_from, ts_to, page, size)
+    total, items = search_operation_logs(query, action, ts_from, ts_to, page, size)
     return {"total": total, "items": items}
 

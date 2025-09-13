@@ -6,7 +6,7 @@
 | `/` | `pages/Dashboard.tsx` | 投资组合总览 | Dashboard |
 | `/review` | `pages/Review.tsx` | 复盘分析 | 复盘分析 |
 | `/signals` | `pages/Signals.tsx` | 交易信号管理 | 交易信号 |
-| `/positions` | `pages/PositionEditor.tsx` | 持仓编辑 | 持仓编辑 |
+| `/positions` | `pages/PositionEditor.tsx` | 持仓管理 | 持仓管理 |
 | `/txn` | `pages/Txn.tsx` | 交易流水 | 交易记录 |
 | `/settings` | `pages/Settings.tsx` | 系统配置 | 系统设置 |
 | `/instrument/:ts_code` | `pages/InstrumentDetail.tsx` | 标的详情 | (详情页) |

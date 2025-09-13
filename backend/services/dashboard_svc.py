@@ -120,31 +120,32 @@ def list_category(date_yyyymmdd: str) -> list[dict]:
 
 def list_position(date_yyyymmdd: str) -> list[dict]:
     """
-    标的持仓动态口径：
+    标的持仓动态口径（完全基于position + price_eod动态计算）：
     - 现价优先用 ≤ 指定日最近价（eod_close）；无则回退到均价
-    - 市值/收益率用动态现价计算；snapshot 值仅作兜底
+    - 所有数据实时计算，不依赖portfolio_daily快照表
     """
     d = yyyyMMdd_to_dash(date_yyyymmdd)
     cfg = get_config(); stop_gain = float(cfg.get("stop_gain_pct", 0.30))
+    
     with get_conn() as conn:
+        # 直接从position表和相关表获取数据，不依赖portfolio_daily
         rows = conn.execute("""
-        SELECT pd.*, i.name, i.ts_code, i.category_id, c.name as cat_name, c.sub_name as cat_sub,
-               (SELECT close FROM price_eod p 
-                 WHERE p.ts_code=i.ts_code AND p.trade_date<=? 
-                 ORDER BY p.trade_date DESC LIMIT 1) as eod_close,
-               p.shares AS pos_shares, p.avg_cost AS pos_avg_cost
-        FROM portfolio_daily pd
-        JOIN instrument i ON pd.ts_code=i.ts_code
+        SELECT i.ts_code, i.name, i.category_id, c.name as cat_name, c.sub_name as cat_sub,
+               p.shares, p.avg_cost,
+               (SELECT close FROM price_eod pe 
+                 WHERE pe.ts_code=i.ts_code AND pe.trade_date<=? 
+                 ORDER BY pe.trade_date DESC LIMIT 1) as eod_close
+        FROM instrument i
         JOIN category c ON i.category_id=c.id
         LEFT JOIN position p ON p.ts_code=i.ts_code
-        WHERE pd.trade_date=? 
+        WHERE i.active=1 AND (p.shares > 0 OR p.shares IS NOT NULL)
         ORDER BY c.name, c.sub_name, i.ts_code
-        """, (d, d)).fetchall()
+        """, (d,)).fetchall()
 
     out = []
     for r in rows:
-        shares = float(r["pos_shares"] or 0.0)
-        avg_cost = float(r["pos_avg_cost"] or 0.0)
+        shares = float(r["shares"] or 0.0)
+        avg_cost = float(r["avg_cost"] or 0.0)
 
         if r["eod_close"] is not None:
             close_disp = float(r["eod_close"])
@@ -152,20 +153,20 @@ def list_position(date_yyyymmdd: str) -> list[dict]:
         else:
             # 没有任何 ≤ d 的价格：回退均价；如 shares=0 则仍为空
             close_disp = avg_cost if shares > 0 else None
-            price_source = "avg_cost_fallback" if shares > 0 else "snapshot_close"
+            price_source = "avg_cost_fallback" if shares > 0 else "no_price"
 
-        # 动态计算展示口径的市值/收益
+        # 动态计算所有指标
         if shares > 0 and close_disp is not None:
             mv_disp = shares * close_disp
             cost_disp = shares * avg_cost
             pnl_disp = mv_disp - cost_disp
             ret_disp = (pnl_disp / cost_disp) if cost_disp > 0 else None
         else:
-            # 无持仓或无价，退回快照值（通常为0）
-            mv_disp = float(r["market_value"] or 0.0)
-            cost_disp = float(r["cost"] or 0.0)
-            pnl_disp = float(r["unrealized_pnl"] or (mv_disp - cost_disp))
-            ret_disp = r["ret"]
+            # 无持仓或无价格
+            mv_disp = 0.0
+            cost_disp = 0.0
+            pnl_disp = 0.0
+            ret_disp = None
 
         out.append({
             "cat_name": r["cat_name"], "cat_sub": r["cat_sub"],

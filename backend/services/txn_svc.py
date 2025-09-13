@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..db import get_conn
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from .config_svc import get_config
 from ..domain.txn_engine import compute_position_after_trade, compute_cash_mirror, compute_position_with_corporate_actions, round_price, round_quantity, round_shares, round_amount
 from ..repository import txn_repo, position_repo, instrument_repo
@@ -123,7 +123,7 @@ def list_txn(page:int, size:int) -> tuple[int, list[dict]]:
 
         return total, items
 
-def create_txn(data: dict, log: LogContext) -> dict:
+def create_txn(data: dict, log: OperationLogContext) -> dict:
     _ensure_txn_group_id()
     action = data["action"].upper()
     shares = float(data["shares"])
@@ -163,7 +163,9 @@ def create_txn(data: dict, log: LogContext) -> dict:
         if t_trade_match_id:
             # 发现T操作，创建分组
             group_id = create_t_trade_group(conn, orig_id, t_trade_match_id)
-            log.info(f"T+0 operation detected: grouped transactions {orig_id} and {t_trade_match_id} with group_id {group_id}")
+            # Use standard logging instead of log.info
+            import logging
+            logging.info(f"T+0 operation detected: grouped transactions {orig_id} and {t_trade_match_id} with group_id {group_id}")
         else:
             # 普通交易，使用自身ID作为group_id
             txn_repo.update_group_id(conn, orig_id, orig_id)
@@ -241,7 +243,7 @@ def create_txn(data: dict, log: LogContext) -> dict:
     log.set_after({"position": result})
     return result
 
-def bulk_txn(rows: list[dict], log: LogContext) -> dict:
+def bulk_txn(rows: list[dict], log: OperationLogContext) -> dict:
     """批量写入交易（通常用于把历史BUY一次性导入作为建仓记录）"""
     ok, fail = 0, 0
     errs = []

@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .logs import ensure_log_schema, LogContext
+from .logs import ensure_log_schema, OperationLogContext
 from .services.config_svc import ensure_default_config
 from .services.watchlist_svc import ensure_watchlist_schema
 
@@ -42,7 +42,7 @@ def on_startup():
     try:
         ensure_watchlist_schema()
     except Exception as e:
-        LogContext("STARTUP").write("ERROR", f"ensure_watchlist_schema_failed: {e}")
+        OperationLogContext("STARTUP").write("ERROR", f"ensure_watchlist_schema_failed: {e}")
 
 
 # Include routers (split by business domain)

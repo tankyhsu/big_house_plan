@@ -340,3 +340,39 @@ export async function syncPrices(params: SyncPricesParams): Promise<SyncPricesRe
   const { data } = await client.post("/api/sync-prices", params);
   return data;
 }
+
+// 增强的价格同步：自动检测并补齐过去几天缺失的价格数据
+export type SyncPricesEnhancedParams = {
+  lookback_days?: number;   // 向前检查的天数，默认7天
+  ts_codes?: string[];      // 指定要同步的标的代码
+  recalc?: boolean;         // 是否重新计算，默认true
+};
+
+export type SyncPricesEnhancedResult = {
+  message: string;
+  dates_processed: number;
+  total_found: number;
+  total_updated: number;
+  total_skipped: number;
+  missing_summary: Record<string, number>;  // {date: missing_count}
+  details: any[];
+  recalc_performed?: boolean;
+};
+
+export async function syncPricesEnhanced(params: SyncPricesEnhancedParams = {}): Promise<SyncPricesEnhancedResult> {
+  const { data } = await client.post("/api/sync-prices-enhanced", params);
+  return data;
+}
+
+// 检测最近有效交易日：通过获取一个代表性标的的最近价格来判断
+export async function getLastValidTradingDate(ymd?: string): Promise<{ trade_date: string | null; close: number | null; }> {
+  // 使用沪深300指数作为代表性标的检测交易日
+  const { data } = await client.get("/api/price/last", { params: { ts_code: "399300.SZ", date: ymd } });
+  return data;
+}
+
+// 获取price_eod表中的最新交易日
+export async function getLatestTradingDate(): Promise<{ latest_trading_date: string | null }> {
+  const { data } = await client.get("/api/price/latest-trading-date");
+  return data;
+}

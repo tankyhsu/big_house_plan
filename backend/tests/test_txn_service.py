@@ -124,6 +124,19 @@ def test_t_operation_no_match_different_quantity(client):
     ts_code = "000002.SZ"
     trade_date = "2024-01-16"
     
+    # 先建立足够的初始持仓
+    client.post(
+        "/api/txn/create",
+        json={
+            "ts_code": ts_code,
+            "date": "2024-01-10",
+            "action": "BUY",
+            "shares": 300,
+            "price": 9.0,
+            "fee": 10.0,
+        },
+    )
+    
     # 1) 买入100股@10元
     res1 = client.post(
         "/api/txn/create",

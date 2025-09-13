@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from ..db import get_conn
 from ..services.calc_svc import calc
 from ..services.category_svc import (
@@ -68,7 +68,7 @@ def api_category_list():
 
 @router.post("/api/category/create")
 def api_category_create(body: CategoryCreate):
-    log = LogContext("CREATE_CATEGORY")
+    log = OperationLogContext("CREATE_CATEGORY")
     log.set_payload(body.dict())
     try:
         new_id = create_category(body.name, body.sub_name, body.target_units, log)
@@ -81,7 +81,7 @@ def api_category_create(body: CategoryCreate):
 
 @router.post("/api/category/update")
 def api_category_update(body: CategoryUpdateItem):
-    log = LogContext("UPDATE_CATEGORY")
+    log = OperationLogContext("UPDATE_CATEGORY")
     log.set_payload(body.dict())
     try:
         svc_update_category(body.id, body.sub_name, body.target_units, log)
@@ -94,7 +94,7 @@ def api_category_update(body: CategoryUpdateItem):
 
 @router.post("/api/category/bulk-update")
 def api_category_bulk_update(body: CategoryBulkUpdate):
-    log = LogContext("BULK_UPDATE_CATEGORY")
+    log = OperationLogContext("BULK_UPDATE_CATEGORY")
     log.set_payload({"count": len(body.items)})
     try:
         for item in body.items:
@@ -121,7 +121,7 @@ def api_instrument_get(ts_code: str = Query(...)):
 
 @router.post("/api/instrument/create")
 def api_instrument_create(body: InstrumentCreate, recalc_today: bool = Query(False)):
-    log = LogContext("CREATE_INSTRUMENT")
+    log = OperationLogContext("CREATE_INSTRUMENT")
     log.set_payload(body.dict())
     try:
         create_instrument(
@@ -136,7 +136,7 @@ def api_instrument_create(body: InstrumentCreate, recalc_today: bool = Query(Fal
             from datetime import datetime
 
             today = datetime.now().strftime("%Y%m%d")
-            calc(today, LogContext("CALC_AFTER_INSTRUMENT_CREATE"))
+            calc(today, OperationLogContext("CALC_AFTER_INSTRUMENT_CREATE"))
         log.set_entity("INSTRUMENT", body.ts_code)
         log.write("OK")
         return {"message": "ok"}
@@ -147,7 +147,7 @@ def api_instrument_create(body: InstrumentCreate, recalc_today: bool = Query(Fal
 
 @router.post("/api/instrument/update")
 def api_instrument_update(body: InstrumentUpdate):
-    log = LogContext("UPDATE_INSTRUMENT")
+    log = OperationLogContext("UPDATE_INSTRUMENT")
     log.set_payload(body.dict())
     try:
         with get_conn() as conn:
@@ -163,7 +163,7 @@ def api_instrument_update(body: InstrumentUpdate):
 
 @router.post("/api/instrument/edit")
 def api_instrument_edit(body: InstrumentEdit):
-    log = LogContext("EDIT_INSTRUMENT")
+    log = OperationLogContext("EDIT_INSTRUMENT")
     log.set_payload(body.dict())
     try:
         edit_instrument(
@@ -188,7 +188,7 @@ def api_seed_load_route(
     instruments_csv: str = Body(...),
     recalc_today: bool = Query(False),
 ):
-    log = LogContext("SEED_LOAD")
+    log = OperationLogContext("SEED_LOAD")
     log.set_payload({"categories_csv": categories_csv, "instruments_csv": instruments_csv})
     try:
         res = seed_load(categories_csv, instruments_csv, log)
@@ -196,7 +196,7 @@ def api_seed_load_route(
             from datetime import datetime
 
             today = datetime.now().strftime("%Y%m%d")
-            calc(today, LogContext("CALC_AFTER_SEED_LOAD"))
+            calc(today, OperationLogContext("CALC_AFTER_SEED_LOAD"))
         log.write("OK")
         return {"message": "ok", **res}
     except Exception as e:

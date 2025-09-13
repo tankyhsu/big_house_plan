@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import argparse
 from backend.db import get_conn
-from backend.logs import LogContext
+from backend.logs import OperationLogContext
 from backend.services.instrument_svc import seed_load
 
 
@@ -29,7 +29,7 @@ def main():
         conn.execute("DELETE FROM category")
         conn.commit()
 
-    log = LogContext("RESET_MASTER_FROM_SEEDS")
+    log = OperationLogContext("RESET_MASTER_FROM_SEEDS")
     res = seed_load(args.categories, args.instruments, log)
     log.write("OK")
     print({"message": "ok", **res})

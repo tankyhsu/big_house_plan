@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from ..db import get_conn
 from ..services.txn_svc import create_txn, list_txn, get_monthly_pnl_stats
 from ..services.calc_svc import calc
@@ -76,12 +76,12 @@ def api_txn_range(
 
 @router.post("/api/txn/create", status_code=201)
 def api_txn_create(body: TxnCreate):
-    log = LogContext("CREATE_TXN")
+    log = OperationLogContext("CREATE_TXN")
     log.set_payload(body.dict())
     try:
         res = create_txn(body.dict(), log)
         date_yyyymmdd = body.date.replace("-", "")
-        calc(date_yyyymmdd, LogContext("CALC_AFTER_TXN_CREATE"))
+        calc(date_yyyymmdd, OperationLogContext("CALC_AFTER_TXN_CREATE"))
         log.write("OK")
         return {"message": "ok", "position": res}
     except ValueError as e:
@@ -99,7 +99,7 @@ class BulkTxnReq(BaseModel):
 
 @router.post("/api/txn/bulk")
 def api_txn_bulk(body: BulkTxnReq):
-    log = LogContext("BULK_TXN")
+    log = OperationLogContext("BULK_TXN")
     log.set_payload({"count": len(body.items), "recalc": body.recalc})
     try:
         ok, fail, errs = 0, 0, []
@@ -115,14 +115,14 @@ def api_txn_bulk(body: BulkTxnReq):
 
         if body.recalc != "none" and date_set:
             if body.recalc == "latest":
-                calc(max(date_set), LogContext("CALC_AFTER_TXN_BULK_LATEST"))
+                calc(max(date_set), OperationLogContext("CALC_AFTER_TXN_BULK_LATEST"))
             else:
                 dates = sorted(date_set)
                 if len(dates) > 50:
-                    calc(dates[-1], LogContext("CALC_AFTER_TXN_BULK_GUARDED"))
+                    calc(dates[-1], OperationLogContext("CALC_AFTER_TXN_BULK_GUARDED"))
                 else:
                     for d in dates:
-                        calc(d, LogContext("CALC_AFTER_TXN_BULK_ALL"))
+                        calc(d, OperationLogContext("CALC_AFTER_TXN_BULK_ALL"))
 
         log.set_after({"ok": ok, "fail": fail})
         log.write("OK")

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from ..services.config_svc import get_config, update_config
 
 router = APIRouter()
@@ -34,7 +34,7 @@ class SettingsUpdateBody(BaseModel):
 
 @router.post("/api/settings/update")
 def api_settings_update(body: SettingsUpdateBody):
-    log = LogContext("SETTINGS_UPDATE")
+    log = OperationLogContext("SETTINGS_UPDATE")
     log.set_payload(body.dict())
     try:
         updated_keys = update_config(body.updates, log)

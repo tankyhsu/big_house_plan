@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from ..services.calc_svc import calc
 
 router = APIRouter()
@@ -14,7 +14,7 @@ class DateBody(BaseModel):
 
 @router.post("/api/calc")
 def api_calc(body: DateBody):
-    log = LogContext("CALC")
+    log = OperationLogContext("CALC")
     log.set_payload(body.model_dump())
     try:
         calc(body.date, log)
@@ -27,7 +27,7 @@ def api_calc(body: DateBody):
 
 @router.post("/api/report/export")
 def api_export(body: DateBody = Body(default=DateBody())):
-    log = LogContext("EXPORT_REPORT")
+    log = OperationLogContext("EXPORT_REPORT")
     log.set_payload(body.model_dump())
     log.write("OK")
     d = body.date or "today"

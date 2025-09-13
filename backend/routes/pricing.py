@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Body
 
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from ..db import get_conn
 from ..services.pricing_svc import sync_prices_tushare
 from ..services.calc_svc import calc
@@ -35,7 +35,7 @@ def api_sync_prices(body: dict = Body(default={})):  # use raw dict for compatib
         end_dt = datetime.strptime(end_date, "%Y%m%d")
         dates_to_sync = [(end_dt - timedelta(days=i)).strftime("%Y%m%d") for i in range(days)]
 
-    log = LogContext("SYNC_PRICES_TUSHARE")
+    log = OperationLogContext("SYNC_PRICES_TUSHARE")
     log.set_payload({"dates": dates_to_sync, "ts_codes": ts_codes, "recalc": recalc_flag})
 
     all_results = []
@@ -44,9 +44,9 @@ def api_sync_prices(body: dict = Body(default={})):  # use raw dict for compatib
     try:
         for d in dates_to_sync:
             if ts_codes:
-                res = sync_prices_tushare(d, LogContext(f"SYNC_{d}"), ts_codes)
+                res = sync_prices_tushare(d, OperationLogContext(f"SYNC_{d}"), ts_codes)
             else:
-                res = sync_prices_tushare(d, LogContext(f"SYNC_{d}"))
+                res = sync_prices_tushare(d, OperationLogContext(f"SYNC_{d}"))
             all_results.append(res)
             used_dates = res.get("used_dates_uniq") or [d]
             all_used_dates.update(used_dates)
@@ -55,7 +55,7 @@ def api_sync_prices(body: dict = Body(default={})):  # use raw dict for compatib
 
         if recalc_flag:
             for d in sorted(all_used_dates):
-                calc(d, LogContext("CALC_AFTER_SYNC"))
+                calc(d, OperationLogContext("CALC_AFTER_SYNC"))
 
         total_found = sum(r.get("found", 0) for r in all_results)
         total_updated = sum(r.get("updated", 0) for r in all_results)
@@ -299,4 +299,22 @@ def api_instrument_lookup(ts_code: str = Query(...), date: str | None = Query(No
             print(f"[lookup] fetch price failed ts={ts_code} date={date}: {e}")
 
     return {"ts_code": ts_code, "name": name, "type": out_type, "basic": basic, "price": price}
+
+
+@router.get("/api/price/latest-trading-date")
+def api_latest_trading_date():
+    """获取price_eod表中的最新交易日"""
+    try:
+        with get_conn() as conn:
+            result = conn.execute("""
+                SELECT MAX(trade_date) as latest_date 
+                FROM price_eod
+            """).fetchone()
+            
+            if result and result["latest_date"]:
+                return {"latest_trading_date": result["latest_date"]}
+            else:
+                return {"latest_trading_date": None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 

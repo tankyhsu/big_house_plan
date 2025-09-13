@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # backend/services/config_svc.py
 from ..db import get_conn
-from ..logs import LogContext
+from ..logs import OperationLogContext
 from .utils import to_float_safe
 
 DEFAULTS = {
@@ -52,7 +52,7 @@ def get_config() -> dict:
     }
     return out
 
-def update_config(upd: dict, log: LogContext) -> list[str]:
+def update_config(upd: dict, log: OperationLogContext) -> list[str]:
     updated = []
     with get_conn() as conn:
         before = {r["key"]: r["value"] for r in conn.execute("SELECT key,value FROM config")}
