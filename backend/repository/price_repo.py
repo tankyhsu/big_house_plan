@@ -194,3 +194,47 @@ def get_ohlcv_for_signal(
         ORDER BY trade_date DESC 
         LIMIT ?
     """, (ts_code, end_date, days)).fetchall()
+
+def get_price_change_percentage(conn: Connection, ts_code: str, date_dash: str) -> float | None:
+    """
+    计算指定日期的涨跌幅
+    
+    Args:
+        conn: 数据库连接
+        ts_code: 标的代码
+        date_dash: 日期 (YYYY-MM-DD)
+        
+    Returns:
+        float: 涨跌幅百分比，如果无法计算则返回None
+    """
+    # 获取当日价格数据
+    current_row = conn.execute(
+        "SELECT close, pre_close FROM price_eod WHERE ts_code=? AND trade_date=?",
+        (ts_code, date_dash),
+    ).fetchone()
+    
+    if not current_row or current_row["close"] is None:
+        return None
+    
+    current_close = float(current_row["close"])
+    
+    # 如果有前收盘价，直接使用
+    if current_row["pre_close"] is not None:
+        pre_close = float(current_row["pre_close"])
+        if pre_close > 0:
+            return ((current_close - pre_close) / pre_close) * 100
+    
+    # 否则查找前一个交易日的收盘价
+    prev_row = conn.execute(
+        "SELECT close FROM price_eod WHERE ts_code=? AND trade_date<? ORDER BY trade_date DESC LIMIT 1",
+        (ts_code, date_dash),
+    ).fetchone()
+    
+    if not prev_row or prev_row["close"] is None:
+        return None
+    
+    prev_close = float(prev_row["close"])
+    if prev_close > 0:
+        return ((current_close - prev_close) / prev_close) * 100
+    
+    return None

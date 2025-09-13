@@ -7,10 +7,10 @@ import pandas as pd
 from ..repository import instrument_repo
 
 def create_instrument(ts_code: str, name: str, category_id: int, active: bool, log: OperationLogContext, sec_type: str | None = None):
-    """创建/更新标的；sec_type 可为 STOCK | FUND | CASH 。None 时不覆盖既有值。"""
+    """创建/更新标的；sec_type 可为 STOCK | ETF | FUND | CASH 。None 时不覆盖既有值。"""
     def _norm_type(t: str | None) -> str:
         t = (t or "").upper().strip()
-        if t in ("STOCK", "FUND", "CASH"): 
+        if t in ("STOCK", "ETF", "FUND", "CASH"): 
             return t
         return "STOCK"  # 兜底：无法判断时默认 STOCK
 

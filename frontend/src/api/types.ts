@@ -90,6 +90,9 @@ export type PositionRaw = {
   cat_name?: string | null;
   cat_sub?: string | null;
   opening_date?: string | null;  // NEW
+  last_price?: number | null;
+  last_price_date?: string | null;
+  price_change?: number | null; // 涨跌幅百分比
 };
 
 export type TxnItem = {
@@ -182,6 +185,7 @@ export type WatchlistItem = {
   created_at?: string | null;
   last_price?: number | null;
   last_price_date?: string | null;
+  price_change?: number | null; // 涨跌幅百分比
   has_position?: boolean; // 是否已持仓
 };
 

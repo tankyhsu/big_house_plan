@@ -7,9 +7,9 @@ from ..logs import OperationLogContext
 from ..repository import position_repo
 
 # ===== Position Raw CRUD =====
-def list_positions_raw(include_zero: bool = True) -> list[dict]:
+def list_positions_raw(include_zero: bool = True, with_price: bool = True, on_date_yyyymmdd: str | None = None) -> list[dict]:
     with get_conn() as conn:
-        rows = position_repo.list_positions_raw(conn, include_zero)
+        rows = position_repo.list_positions_raw(conn, include_zero, with_price, on_date_yyyymmdd)
         return [dict(r) for r in rows]
 
 def set_opening_position(ts_code: str, shares: float, avg_cost: float, date: str, log: OperationLogContext, opening_date: str | None = None):

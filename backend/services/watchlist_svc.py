@@ -59,6 +59,13 @@ def list_watchlist(with_last_price: bool = True, on_date_yyyymmdd: str | None = 
                 last = price_repo.get_last_close_on_or_before(conn, r["ts_code"], last_date_dash)
                 it["last_price"] = None if not last else float(last[1])
                 it["last_price_date"] = None if not last else last[0]
+                
+                # 计算涨跌幅
+                if last and last[0]:  # 如果有最新价格数据
+                    price_change = price_repo.get_price_change_percentage(conn, r["ts_code"], last[0])
+                    it["price_change"] = price_change
+                else:
+                    it["price_change"] = None
             items.append(it)
         return items
 

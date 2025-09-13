@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, DatePicker, Flex, Input, message, Modal, Space, Table, AutoComplete, Tag, Form, Select, Alert } from "antd";
+import { Button, DatePicker, Flex, Input, message, Modal, Space, Table, AutoComplete, Tag, Form, Select, Alert, Card } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { dashedToYmd } from "../utils/format";
@@ -38,6 +38,10 @@ export default function WatchlistPage() {
   
   // 各标的的信号数据（用于表格显示）
   const [itemSignals, setItemSignals] = useState<Record<string, SignalRow[]>>({});
+  
+  // 筛选状态
+  const [filterKeyword, setFilterKeyword] = useState<string>("");
+  const [filterPositionOnly, setFilterPositionOnly] = useState<boolean>(false);
 
   const load = async () => {
     setLoading(true);
@@ -222,6 +226,26 @@ export default function WatchlistPage() {
     run();
   }, [selected?.ts_code]);
 
+  // 筛选后的数据
+  const filteredItems = useMemo(() => {
+    return items.filter(item => {
+      // 关键词筛选
+      if (filterKeyword) {
+        const keyword = filterKeyword.toLowerCase();
+        const matchCode = item.ts_code.toLowerCase().includes(keyword);
+        const matchName = item.name?.toLowerCase().includes(keyword);
+        if (!matchCode && !matchName) return false;
+      }
+      
+      // 只显示已持仓
+      if (filterPositionOnly && !item.has_position) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [items, filterKeyword, filterPositionOnly]);
+
   const columns: ColumnsType<WatchlistItem> = [
     {
       title: "标的",
@@ -249,13 +273,29 @@ export default function WatchlistPage() {
       dataIndex: "last_price",
       align: "right",
       width: 110,
-      render: (v: any) => (typeof v === 'number' ? v.toFixed(3) : "-")
+      render: (v: any, record: WatchlistItem) => {
+        if (typeof v !== 'number') return "-";
+        
+        // 根据涨跌幅决定颜色
+        let color = "#666";
+        if (typeof record.price_change === 'number') {
+          color = record.price_change > 0 ? "#f50" : record.price_change < 0 ? "#389e0d" : "#666";
+        }
+        
+        return <span style={{ color }}>{v.toFixed(3)}</span>;
+      }
     },
     {
-      title: "日期",
-      dataIndex: "last_price_date",
-      width: 110,
-      render: (v: any) => v || "-",
+      title: "涨跌幅",
+      dataIndex: "price_change",
+      align: "right",
+      width: 100,
+      render: (v: any) => {
+        if (typeof v !== 'number') return "-";
+        const color = v > 0 ? "#f50" : v < 0 ? "#389e0d" : "#666";
+        const prefix = v > 0 ? "+" : "";
+        return <span style={{ color }}>{prefix}{v.toFixed(2)}%</span>;
+      }
     },
     {
       title: "备注",
@@ -293,11 +333,40 @@ export default function WatchlistPage() {
         </Space>
       </Flex>
 
+      {/* 筛选组件 */}
+      <Card size="small">
+        <Flex gap={16} wrap="wrap" align="center">
+          <div>
+            <span style={{ marginRight: 8 }}>搜索：</span>
+            <Input
+              placeholder="搜索标的代码或名称"
+              value={filterKeyword}
+              onChange={(e) => setFilterKeyword(e.target.value)}
+              allowClear
+              style={{ width: 200 }}
+            />
+          </div>
+          <div>
+            <span style={{ marginRight: 8 }}>筛选：</span>
+            <Select
+              value={filterPositionOnly ? "position" : "all"}
+              onChange={(val) => setFilterPositionOnly(val === "position")}
+              style={{ width: 120 }}
+              options={[
+                { value: "all", label: "全部" },
+                { value: "position", label: "仅已持仓" }
+              ]}
+            />
+          </div>
+          <Tag color="blue">共 {filteredItems.length} 个标的</Tag>
+        </Flex>
+      </Card>
+
       <Table
         size="small"
         rowKey={(r) => r.ts_code}
         loading={loading}
-        dataSource={items}
+        dataSource={filteredItems}
         columns={columns}
         pagination={{ pageSize: 15, showTotal: (t) => `共 ${t} 条` }}
         scroll={{ x: 'max-content' }}

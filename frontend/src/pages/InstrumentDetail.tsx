@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, Select, Space, Typography, message, Table, DatePicker, Row, Col, Tabs } from "antd";
+import { Button, Card, Form, Input, Select, Space, Typography, Table, DatePicker, Row, Col, Tabs, App, Modal } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals, syncPrices } from "../api/hooks";
@@ -11,6 +11,7 @@ import type { ColumnsType } from "antd/es/table";
 import { formatPrice, formatQuantity } from "../utils/format";
 
 export default function InstrumentDetail() {
+  const { message } = App.useApp();
   const { ts_code = "" } = useParams();
   const navigate = useNavigate();
   const [form] = Form.useForm();
@@ -30,6 +31,9 @@ export default function InstrumentDetail() {
   const [chartSignals, setChartSignals] = useState<SignalRow[]>([]); // K线图显示用的信号（6个月）
   const [signalsLoading, setSignalsLoading] = useState(false);
   const [syncing, setSyncing] = useState(false); // 同步按钮状态
+  const [chartKey, setChartKey] = useState(0); // K线图刷新key
+  const [syncModalOpen, setSyncModalOpen] = useState(false); // 同步Modal状态
+  const [syncForm] = Form.useForm(); // 同步日期范围表单
 
   const load = async () => {
     setLoading(true);
@@ -166,41 +170,85 @@ export default function InstrumentDetail() {
     }
   };
 
-  const onSyncPrices = async () => {
+  // 打开同步Modal
+  const onSyncPrices = () => {
+    // 设置默认日期范围：过去90天到今天
+    const endDate = dayjs();
+    const startDate = endDate.subtract(90, 'day');
+    syncForm.setFieldsValue({
+      dateRange: [startDate, endDate]
+    });
+    setSyncModalOpen(true);
+  };
+
+  // 执行同步操作
+  const onConfirmSync = async () => {
     if (!ts_code) return;
-    setSyncing(true);
+    
     try {
-      const result = await syncPrices({
+      const values = await syncForm.validateFields();
+      const [startDate, endDate] = values.dateRange;
+      
+      if (!startDate || !endDate) {
+        message.error('请选择有效的日期范围');
+        return;
+      }
+
+      setSyncModalOpen(false);
+      setSyncing(true);
+      const loadingMsg = message.loading(`正在同步 ${ts_code} 从 ${startDate.format('YYYY-MM-DD')} 到 ${endDate.format('YYYY-MM-DD')} 的价格数据，请稍候...`, 0);
+      
+      // 计算天数差异
+      const daysDiff = endDate.diff(startDate, 'day') + 1;
+      
+      // 异步执行同步操作
+      syncPrices({
+        days: daysDiff,
         ts_codes: [ts_code],
-        days: 90,
-        recalc: true, // 自动重算
+        recalc: true
+      }).then(async (result) => {
+        // 清除特定的loading提示
+        loadingMsg();
+        setSyncing(false);
+        
+        if (result.total_updated === 0) {
+          message.info(`${ts_code} 价格数据已是最新，无需同步`);
+        } else {
+          message.success(
+            `${ts_code} 同步完成！处理${result.dates_processed}个日期，找到${result.total_found}条数据，更新${result.total_updated}条，跳过${result.total_skipped}条`
+          );
+        }
+        
+        // 重新加载价格数据以更新头部显示
+        const end = dayjs();
+        const start = end.subtract(20, "day");
+        fetchOhlcRange(ts_code, start.format("YYYYMMDD"), end.format("YYYYMMDD")).then(items => {
+          const valid = items.filter(it => typeof it.close === 'number');
+          if (valid.length > 0) {
+            const last = valid[valid.length - 1];
+            const prev = valid.length > 1 ? valid[valid.length - 2] : null;
+            setLastPrice({ date: last.date, close: last.close, prevClose: prev ? prev.close : null });
+          }
+        }).catch(() => {});
+        
+        // 强制刷新K线图
+        setChartKey(prev => prev + 1);
+        
+        // 提示用户K线图已刷新
+        setTimeout(() => {
+          message.info('数据同步完成，K线图已刷新显示最新数据');
+        }, 500);
+        
+      }).catch((e: any) => {
+        // 清除特定的loading提示
+        loadingMsg();
+        setSyncing(false);
+        message.error(`${ts_code} 同步失败：${e.message}`);
       });
       
-      message.success(
-        `同步完成：处理${result.dates_processed}个日期，找到${result.total_found}条数据，更新${result.total_updated}条，跳过${result.total_skipped}条`
-      );
-      
-      // 重新加载价格数据以更新头部显示和K线图
-      const end = dayjs();
-      const start = end.subtract(20, "day");
-      fetchOhlcRange(ts_code, start.format("YYYYMMDD"), end.format("YYYYMMDD")).then(items => {
-        const valid = items.filter(it => typeof it.close === 'number');
-        if (valid.length > 0) {
-          const last = valid[valid.length - 1];
-          const prev = valid.length > 1 ? valid[valid.length - 2] : null;
-          setLastPrice({ date: last.date, close: last.close, prevClose: prev ? prev.close : null });
-        }
-      }).catch(() => {});
-      
-      // 提示用户刷新页面或切换tab以查看更新的K线图
-      setTimeout(() => {
-        message.info('数据同步完成，K线图将自动更新显示最新数据');
-      }, 1000);
-      
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || e?.message || "同步失败");
-    } finally {
-      setSyncing(false);
+      if (e?.errorFields) return; // 表单校验错误
+      message.error(`启动同步失败：${e?.message || "启动失败"}`);
     }
   };
 
@@ -229,9 +277,9 @@ export default function InstrumentDetail() {
           <Button 
             onClick={onSyncPrices} 
             loading={syncing}
-            title="从TuShare同步过去90天的价格数据"
+            title="选择日期范围同步价格数据"
           >
-            {syncing ? "同步中..." : "同步90天数据"}
+            {syncing ? "同步中..." : "同步价格数据"}
           </Button>
         </Space>
         {/* 详情页头部：代码｜名称｜类别｜启用状态｜最新价格与涨跌 */}
@@ -335,6 +383,7 @@ export default function InstrumentDetail() {
                 label: 'K 线',
                 children: (
                   <CandleChart 
+                    key={chartKey}
                     tsCode={ts_code} 
                     months={6} 
                     height={320} 
@@ -389,6 +438,40 @@ export default function InstrumentDetail() {
           })()}
         </Col>
       </Row>
+
+      {/* 同步价格数据Modal */}
+      <Modal
+        title="同步价格数据"
+        open={syncModalOpen}
+        onOk={onConfirmSync}
+        onCancel={() => setSyncModalOpen(false)}
+        okText="开始同步"
+        cancelText="取消"
+        width={480}
+      >
+        <Form
+          form={syncForm}
+          layout="vertical"
+          initialValues={{
+            dateRange: [dayjs().subtract(90, 'day'), dayjs()]
+          }}
+        >
+          <Form.Item
+            label="选择同步日期范围"
+            name="dateRange"
+            rules={[{ required: true, message: "请选择日期范围" }]}
+          >
+            <DatePicker.RangePicker
+              style={{ width: "100%" }}
+              placeholder={["开始日期", "结束日期"]}
+              allowClear={false}
+            />
+          </Form.Item>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            将同步选定日期范围内 <strong>{ts_code}</strong> 的价格数据，并重新计算相关投资组合快照。
+          </Typography.Paragraph>
+        </Form>
+      </Modal>
     </Space>
   );
 }

@@ -1,4 +1,4 @@
-import { ConfigProvider, Layout, Menu } from "antd";
+import { ConfigProvider, Layout, Menu, App as AntdApp } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import theme from "./theme";
 import Dashboard from "./pages/Dashboard";
@@ -50,25 +50,27 @@ function TopNav() {
 export default function App() {
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
-      <Layout style={{ minHeight: "100vh", background: "#f5f7fb" }}>
-        <TopNav />
-        <Content style={{ padding: 16, maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/review" element={<ReviewPage />} />
-            <Route path="/signals" element={<SignalsPage />} />
-            <Route path="/positions" element={<PositionEditor />} />
-            <Route path="/instrument/:ts_code" element={<InstrumentDetail />} />
-            <Route path="/watchlist" element={<WatchlistPage />} />
-            <Route path="/txn" element={<TxnPage />} />
-            <Route path="/settings" element={<SettingsPage />} />  
-            <Route path="*" element={<Dashboard />} />
-          </Routes>
-        </Content>
-        <Footer style={{ textAlign: "center", color: "#98A2B3" }}>
-          © {new Date().getFullYear()} Your Portfolio
-        </Footer>
-      </Layout>
+      <AntdApp>
+        <Layout style={{ minHeight: "100vh", background: "#f5f7fb" }}>
+          <TopNav />
+          <Content style={{ padding: 16, maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/review" element={<ReviewPage />} />
+              <Route path="/signals" element={<SignalsPage />} />
+              <Route path="/positions" element={<PositionEditor />} />
+              <Route path="/instrument/:ts_code" element={<InstrumentDetail />} />
+              <Route path="/watchlist" element={<WatchlistPage />} />
+              <Route path="/txn" element={<TxnPage />} />
+              <Route path="/settings" element={<SettingsPage />} />  
+              <Route path="*" element={<Dashboard />} />
+            </Routes>
+          </Content>
+          <Footer style={{ textAlign: "center", color: "#98A2B3" }}>
+            © {new Date().getFullYear()} Your Portfolio
+          </Footer>
+        </Layout>
+      </AntdApp>
     </ConfigProvider>
   );
 }

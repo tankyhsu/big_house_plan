@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Flex, message, Space, Row, Col, Card, Modal } from "antd";
+import { Button, Flex, Space, Row, Col, Card, Modal, App } from "antd";
 import dayjs from "dayjs";
 import KpiCards from "../components/KpiCards";
 import CategoryTable from "../components/CategoryTable";
@@ -11,6 +11,8 @@ import { dashedToYmd } from "../utils/format";
 import { ReloadOutlined, CalculatorOutlined, CloudSyncOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
 
 export default function Dashboard() {
+  const { message } = App.useApp();
+  
   // 智能交易日逻辑
   const today = dayjs();
   const [currentDate, setCurrentDate] = useState(today); // 当前实际显示的日期
@@ -148,33 +150,46 @@ export default function Dashboard() {
   };
 
   /**
-   * 智能同步价格数据
+   * 智能同步价格数据（异步方式）
    * 自动检测并补齐过去7天缺失的价格数据，同步完成后自动重算
    */
   const onSync = async () => {
     setLoading(true);
+    const loadingMsg = message.loading("正在同步价格数据，请稍候...", 0);
+    
     try {
-      const res = await syncPricesEnhanced({ 
+      // 异步执行同步操作
+      syncPricesEnhanced({ 
         lookback_days: 7, 
         recalc: true 
+      }).then(async (res) => {
+        // 清除特定的loading提示
+        loadingMsg();
+        setLoading(false);
+        
+        if (res.total_updated === 0) {
+          message.info("价格数据已是最新，无需同步");
+        } else {
+          const missingDates = Object.keys(res.missing_summary).length;
+          message.success(
+            `同步完成！已同步 ${res.dates_processed} 个日期的价格数据，更新 ${res.total_updated} 条记录` +
+            (missingDates > 0 ? `，补齐了 ${missingDates} 天的缺失数据` : "")
+          );
+        }
+        
+        // 同步完成后刷新页面数据
+        await loadAll();
+      }).catch((e: any) => {
+        // 清除特定的loading提示
+        loadingMsg();
+        setLoading(false);
+        message.error(`同步失败：${e.message}`);
       });
       
-      if (res.total_updated === 0) {
-        message.info("价格数据已是最新，无需同步");
-      } else {
-        const missingDates = Object.keys(res.missing_summary).length;
-        message.success(
-          `已同步 ${res.dates_processed} 个日期的价格数据，更新 ${res.total_updated} 条记录` +
-          (missingDates > 0 ? `，补齐了 ${missingDates} 天的缺失数据` : "")
-        );
-      }
-      
-      // 同步完成后刷新页面数据
-      await loadAll();
     } catch (e: any) { 
-      message.error(e.message); 
-    } finally {
+      loadingMsg();
       setLoading(false);
+      message.error(`启动同步失败：${e.message}`); 
     }
   };
 
@@ -183,9 +198,9 @@ export default function Dashboard() {
    */
   const handleSyncConfirm = async () => {
     setShowSyncPrompt(false);
-    await onSync();
-    // 同步完成后重新检测交易日逻辑
-    await checkTradingDateLogic();
+    onSync(); // 不等待同步完成，立即返回
+    // 由于同步是异步的，不需要等待就重新检测交易日逻辑
+    setTimeout(() => checkTradingDateLogic(), 1000);
   };
 
   /**

@@ -31,8 +31,8 @@ class PositionUpdateBody(BaseModel):
 
 
 @router.get("/api/position/raw")
-def api_position_raw(include_zero: bool = True):
-    return list_positions_raw(include_zero=include_zero)
+def api_position_raw(include_zero: bool = True, with_price: bool = True, date: str | None = None):
+    return list_positions_raw(include_zero=include_zero, with_price=with_price, on_date_yyyymmdd=date)
 
 
 @router.post("/api/position/set_opening")

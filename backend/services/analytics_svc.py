@@ -142,7 +142,7 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
         with get_conn() as conn:
             # 取 position 的建仓信息
             prow = conn.execute(
-                "SELECT opening_date, shares, avg_cost FROM position WHERE ts_code=?",
+                "SELECT opening_date, shares, avg_cost, last_update FROM position WHERE ts_code=?",
                 (ts_code,)
             ).fetchone()
             if not prow:
@@ -159,6 +159,26 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
             shares_now = float(prow["shares"] or 0.0)
             avg_cost = float(prow["avg_cost"] or 0.0)
 
+            # 如果没有建仓日期，但有持仓数据，尝试用 last_update 作为近似建仓日期
+            if not opening_date and shares_now > 0 and avg_cost > 0:
+                # 使用 last_update 作为近似建仓日期，但标记为估算
+                last_update_raw = prow["last_update"] if "last_update" in prow.keys() else None
+                if last_update_raw:
+                    # 直接设置，因为我们从DB得到的应该已经是YYYY-MM-DD格式
+                    opening_date = str(last_update_raw).strip() if last_update_raw else None
+                    # 验证格式
+                    if opening_date and len(opening_date) == 10 and opening_date[4] == "-" and opening_date[7] == "-":
+                        fallback_reason = "fallback_last_update"
+                    else:
+                        opening_date = None
+                        fallback_reason = "insufficient_base"
+                else:
+                    fallback_reason = "insufficient_base"
+            elif opening_date:
+                fallback_reason = "fallback_opening_date"
+            else:
+                fallback_reason = "insufficient_base"
+            
             if not opening_date or shares_now <= 0 or avg_cost <= 0:
                 # Fallback calculation blocked - insufficient data
                 return {
@@ -190,14 +210,21 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
             od = _dt.strptime(opening_date, "%Y-%m-%d").date()
             vd = _dt.strptime(d, "%Y-%m-%d").date()
             holding_days = (vd - od).days
+            
+            # 如果持有天数无效，尝试使用最少30天作为基准
             if holding_days <= 0:
-                # Invalid holding period for fallback calculation
-                return {
-                    "ts_code": ts_code, "date": d,
-                    "annualized_mwr": None, "flows": len(cfs),
-                    "used_price_date": used_price_date, "terminal_value": terminal_value,
-                    "irr_reason": "invalid_holding_days"
-                }
+                if fallback_reason == "fallback_last_update":
+                    # 对于使用 last_update 的情况，如果日期无效，使用30天作为最小基准
+                    holding_days = 30
+                    fallback_reason = "fallback_minimum_period"
+                else:
+                    # Invalid holding period for fallback calculation
+                    return {
+                        "ts_code": ts_code, "date": d,
+                        "annualized_mwr": None, "flows": len(cfs),
+                        "used_price_date": used_price_date, "terminal_value": terminal_value,
+                        "irr_reason": "invalid_holding_days"
+                    }
 
             total_return = (price / avg_cost) - 1.0
             annualized = (1.0 + total_return) ** (365.0 / holding_days) - 1.0
@@ -210,12 +237,12 @@ def compute_position_xirr(ts_code: str, date_yyyymmdd: str) -> Dict:
                 "flows": len(cfs),  # 这里一般为 0 或 1（只有期末市值）
                 "used_price_date": used_price_date,
                 "terminal_value": terminal_value,
-                "irr_reason": "fallback_opening_date"
+                "irr_reason": fallback_reason
             }
 
-    except Exception:
+    except Exception as e:
         # Fallback calculation failed
-        # 保底返回
+        # 保底返回，包含错误信息用于调试
         return {
             "ts_code": ts_code, "date": d,
             "annualized_mwr": None, "flows": len(cfs),

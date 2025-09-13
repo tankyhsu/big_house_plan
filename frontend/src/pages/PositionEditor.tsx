@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table, Typography, Empty, Divider, Alert } from "antd";
+import { AutoComplete, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Typography, Empty, Divider, Alert, App } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Tooltip } from "antd";
 import { fetchIrrBatch, fetchAllSignals } from "../api/hooks";
 import dayjs from "dayjs";
 import type { PositionRaw, InstrumentLite, CategoryLite, SignalRow } from "../api/types";
-import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, lookupInstrument } from "../api/hooks";
+import { fetchPositionRaw, updatePositionOne, fetchInstruments, fetchCategories, createInstrument, lookupInstrument, syncPrices } from "../api/hooks";
 import { formatPrice, fmtPct } from "../utils/format";
 import { getSignalsForTsCode } from "../hooks/useRecentSignals";
 import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
 
 export default function PositionEditor() {
+  const { message } = App.useApp();
   const [data, setData] = useState<PositionRaw[]>([]);
   const [loading, setLoading] = useState(false);
   const [signals, setSignals] = useState<SignalRow[]>([]);
@@ -38,6 +39,16 @@ export default function PositionEditor() {
     try {
       const rows = await fetchPositionRaw(false); // Only show non-zero positions
       setData(rows);
+      
+      // 同时刷新 IRR 数据
+      const ymd = dayjs().format("YYYYMMDD");
+      fetchIrrBatch(ymd).then(irrRows => {
+        const m: Record<string, { val: number | null; reason?: string }> = {};
+        irrRows.forEach(r => {
+          m[r.ts_code] = { val: r.annualized_mwr, reason: r.irr_reason || undefined };
+        });
+        setIrrMap(m);
+      }).catch(()=>{});
     } catch (e: any) {
       message.error(e.message);
     } finally {
@@ -101,14 +112,15 @@ export default function PositionEditor() {
     return !instOpts.some((i) => i.ts_code === code);
   };
 
-  // 提交“新增持仓”（如遇新代码，先登记 instrument 再写 position）
+  // 提交"新增持仓"（如遇新代码，先登记 instrument 再写 position）
   const onCreate = async () => {
     try {
       const vals = await createForm.validateFields();
       const ts_code: string = (typeof vals.ts_code === "string" ? vals.ts_code : vals.ts_code?.value)?.trim();
       if (!ts_code) throw new Error("请输入/选择 ts_code");
 
-      if (isNewInstrument()) {
+      const isNew = isNewInstrument();
+      if (isNew) {
         // 校验并创建 instrument
         await createForm.validateFields(["inst_name", "inst_type", "inst_category_id", "inst_active"]);
         await createInstrument({
@@ -128,12 +140,36 @@ export default function PositionEditor() {
         date: vals.date.format("YYYY-MM-DD"),
       });
 
-      message.success(isNewInstrument() ? "已登记新标的并新增持仓" : "已新增持仓");
+      message.success(isNew ? "已登记新标的并新增持仓" : "已新增持仓");
       setCreateOpen(false);
       createForm.resetFields();
+      
       // 刷新：让新标的立即出现在下拉 & 列表
       fetchInstruments(ts_code).then(setInstOpts).catch(() => {});
       load();
+
+      // 如果是新标的，自动同步90天价格数据
+      if (isNew) {
+        const loadingMsg = message.loading("正在同步新标的的90天价格数据，请稍候...", 0);
+        
+        syncPrices({ 
+          days: 90, 
+          ts_codes: [ts_code],
+          recalc: true 
+        }).then((result) => {
+          loadingMsg();
+          if (result.total_updated === 0) {
+            message.info(`${ts_code} 价格数据已是最新，无需同步`);
+          } else {
+            message.success(
+              `${ts_code} 同步完成！处理${result.dates_processed}个日期，找到${result.total_found}条数据，更新${result.total_updated}条，跳过${result.total_skipped}条`
+            );
+          }
+        }).catch((e: any) => {
+          loadingMsg();
+          message.error(`${ts_code} 价格同步失败：${e.message}`);
+        });
+      }
     } catch (e: any) {
       if (e?.errorFields) return; // 表单校验错误
       message.error(e.message || "新增失败");
@@ -176,31 +212,21 @@ export default function PositionEditor() {
 
   const [irrMap, setIrrMap] = useState<Record<string, { val: number | null; reason?: string }>>({});
 
-    // 页面打开时批量拉一次（以今天为估值日；也可以用你页面上的“查看日期”）
-  useEffect(() => {
-    const ymd = dayjs().format("YYYYMMDD");
-    fetchIrrBatch(ymd).then(rows => {
-      const m: Record<string, { val: number | null; reason?: string }> = {};
-      rows.forEach(r => {
-        m[r.ts_code] = { val: r.annualized_mwr, reason: r.irr_reason || undefined };
-      });
-      setIrrMap(m);
-    }).catch(()=>{});
-  }, []);
+  // IRR 数据现在通过 load() 函数一起加载，无需单独的 useEffect
 
   // 列定义：当 shares===0 时显示删除按钮
   const columns: ColumnsType<PositionRaw> = [
-    {
-      title: "类别",
-      dataIndex: "cat_name",
-      sorter: (a, b) => `${a.cat_name || ''}/${a.cat_sub || ''}`.localeCompare(`${b.cat_name || ''}/${b.cat_sub || ''}`),
-      render: (t, r) => (
-        <>
-          {t}
-          {r.cat_sub ? <span style={{ color: "#98A2B3" }}> / {r.cat_sub}</span> : null}
-        </>
-      ),
-    },
+    // {
+    //   title: "类别",
+    //   dataIndex: "cat_name",
+    //   sorter: (a, b) => `${a.cat_name || ''}/${a.cat_sub || ''}`.localeCompare(`${b.cat_name || ''}/${b.cat_sub || ''}`),
+    //   render: (t, r) => (
+    //     <>
+    //       {t}
+    //       {r.cat_sub ? <span style={{ color: "#98A2B3" }}> / {r.cat_sub}</span> : null}
+    //     </>
+    //   ),
+    // },
     {
       title: "代码/名称",
       dataIndex: "ts_code",
@@ -237,18 +263,35 @@ export default function PositionEditor() {
       render: (_, record) => formatPrice(record.avg_cost ?? 0),
     },
     {
-      title: "最后更新",
-      dataIndex: "last_update",
-      width: 100,
-      sorter: (a, b) => (a.last_update || '').localeCompare(b.last_update || ''),
-      render: (_: any, record) => record.last_update || "-",
+      title: "最新价",
+      dataIndex: "last_price",
+      align: "right",
+      width: 110,
+      sorter: (a, b) => Number(a.last_price || 0) - Number(b.last_price || 0),
+      render: (v: any, record: PositionRaw) => {
+        if (typeof v !== 'number') return "-";
+        
+        // 根据涨跌幅决定颜色
+        let color = "#666";
+        if (typeof record.price_change === 'number') {
+          color = record.price_change > 0 ? "#f50" : record.price_change < 0 ? "#389e0d" : "#666";
+        }
+        
+        return <span style={{ color }}>{v.toFixed(3)}</span>;
+      }
     },
     {
-      title: "建仓时间",
-      dataIndex: "opening_date",
+      title: "涨跌幅",
+      dataIndex: "price_change",
+      align: "right",
       width: 100,
-      sorter: (a, b) => (a.opening_date || '').localeCompare(b.opening_date || ''),
-      render: (_: any, record) => record.opening_date || "-",
+      sorter: (a, b) => Number(a.price_change || 0) - Number(b.price_change || 0),
+      render: (v: any) => {
+        if (typeof v !== 'number') return "-";
+        const color = v > 0 ? "#f50" : v < 0 ? "#389e0d" : "#666";
+        const prefix = v > 0 ? "+" : "";
+        return <span style={{ color }}>{prefix}{v.toFixed(2)}%</span>;
+      }
     },
     {
       title: "年化收益（自建仓）",
@@ -269,16 +312,38 @@ export default function PositionEditor() {
         return (
           <>
             {typeof irr === "number" ? fmtPct(irr) : "—"}
-            {reason === "fallback_opening_date" && (
+            {(reason === "fallback_opening_date" || reason === "fallback_last_update" || reason === "fallback_minimum_period") && (
               <Tooltip
-                title="近似估算：无交易流水，按“建仓日→估值日”和当前收益率推算年化（非资金加权 IRR）。"
+                title={
+                  reason === "fallback_opening_date" 
+                    ? "近似估算：无交易流水，按\"建仓日→估值日\"和当前收益率推算年化（非资金加权 IRR）。"
+                    : reason === "fallback_last_update"
+                    ? "近似估算：无建仓日期和交易流水，按\"最后更新日→估值日\"和当前收益率推算年化（非资金加权 IRR）。"
+                    : "粗略估算：无有效日期，按30天最小持有期和当前收益率推算年化（仅供参考）。"
+                }
               >
-                <sup style={{ marginLeft: 2, color: "#ff3c00ff", cursor: "help" }}>*</sup>
+                <sup style={{ marginLeft: 2, color: "#ff3c00ff", cursor: "help" }}>
+                  {reason === "fallback_minimum_period" ? "***" : reason === "fallback_last_update" ? "**" : "*"}
+                </sup>
               </Tooltip>
             )}
           </>
         );
       },
+    },
+    // {
+    //   title: "最后更新",
+    //   dataIndex: "last_update",
+    //   width: 100,
+    //   sorter: (a, b) => (a.last_update || '').localeCompare(b.last_update || ''),
+    //   render: (_: any, record) => record.last_update || "-",
+    // },
+    {
+      title: "建仓时间",
+      dataIndex: "opening_date",
+      width: 100,
+      sorter: (a, b) => (a.opening_date || '').localeCompare(b.opening_date || ''),
+      render: (_: any, record) => record.opening_date || "-",
     },
   ];
 
@@ -414,13 +479,9 @@ export default function PositionEditor() {
                   filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
                 />
               </Form.Item>
-              <Form.Item label="启用" name="inst_active" initialValue={true}>
-                <Select
-                  options={[
-                    { value: true, label: "是" },
-                    { value: false, label: "否" },
-                  ]}
-                />
+              {/* 新增标的默认启用，不需要用户选择 */}
+              <Form.Item name="inst_active" initialValue={true} style={{ display: 'none' }}>
+                <Input type="hidden" />
               </Form.Item>
               <Divider style={{ margin: "8px 0 12px" }} />
             </>
