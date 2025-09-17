@@ -152,6 +152,10 @@ python portfolio.py calc -d 20250101 # 重算指定交易日
 
 - 后端测试：在项目根运行 `pytest`（目录：`backend/tests/`）
 - 前端 ESLint：`cd frontend && npm run lint`
+- 最近验证（Python 3.13.7，pytest 8.3.2）：`pytest` 全部 90 项测试通过
+  - FastAPI `@app.on_event` 在 0.111+ 版本起已弃用，可后续迁移至 lifespan hooks
+  - Pydantic 2.x 中 `.dict()` 将被移除，建议按需替换为 `model_dump()`
+  - Pandas 对 `fillna` 的类型降级行为将调整，可通过 `infer_objects` 或 `future.no_silent_downcasting` 选项提前适配
 
 ---
 
@@ -166,4 +170,3 @@ python portfolio.py calc -d 20250101 # 重算指定交易日
 ## License
 
 私有项目，勿外传。
-

@@ -307,14 +307,13 @@ export async function removeWatchlist(ts_code: string) {
   return data as { message: string };
 }
 
-// 新增：结构信号相关接口
-export async function generateStructureSignals(date: string) {
-  const { data } = await client.post("/api/signal/generate-structure", { date });
+export async function rebuildHistoricalSignals() {
+  const { data } = await client.post("/api/signal/rebuild-historical");
   return data;
 }
 
-export async function rebuildStructureSignals() {
-  const { data } = await client.post("/api/signal/rebuild-structure");
+export async function rebuildZigSignals() {
+  const { data } = await client.post("/api/signal/rebuild-zig");
   return data;
 }
 

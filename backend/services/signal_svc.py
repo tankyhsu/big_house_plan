@@ -675,7 +675,60 @@ class TdxZigSignalGenerator:
             buy_signal, sell_signal = TdxZigSignalGenerator.detect_zig_signals(zig_values)
             
             return buy_signal, sell_signal
-    
+
+    @staticmethod
+    def _insert_or_replace_zig_signal(
+        conn,
+        ts_code: str,
+        trade_date: str,
+        signal_type: str,
+        message: str,
+        level: str = "HIGH",
+    ) -> tuple[bool, int | None]:
+        """插入ZIG信号，若上一个信号同类型则替换掉旧记录。"""
+
+        replaced = False
+
+        # 先清理相同日期的同类信号，避免重复
+        conn.execute(
+            "DELETE FROM signal WHERE ts_code=? AND type=? AND trade_date=?",
+            (ts_code, signal_type, trade_date),
+        )
+
+        last = signal_repo.get_last_signal_of_types(
+            conn,
+            ts_code,
+            ["ZIG_BUY", "ZIG_SELL"],
+            before_date=trade_date,
+        )
+
+        if last and last.get("type") == signal_type:
+            signal_repo.delete_signal_by_id(conn, int(last["id"]))
+            replaced = True
+
+        sid = signal_repo.insert_signal_if_no_recent_structure(
+            conn,
+            trade_date,
+            ts_code=ts_code,
+            level=level,
+            signal_type=signal_type,
+            message=message,
+            days_back=5,
+        )
+
+        if sid is None:
+            # 插入失败一般意味着仍存在重复，直接强制插入覆盖
+            sid = signal_repo.insert_signal(
+                conn,
+                trade_date,
+                ts_code=ts_code,
+                level=level,
+                signal_type=signal_type,
+                message=message,
+            )
+
+        return replaced, sid
+
     @staticmethod
     def generate_zig_signals_for_date(trade_date: str) -> tuple[int, list[str]]:
         """
@@ -704,42 +757,25 @@ class TdxZigSignalGenerator:
                     ts_code, trade_date
                 )
 
-                # 新规则：若出现新的买/卖点，且上一个ZIG信号同类型，则删除上一条后再新增
                 if buy_signal:
-                    last = signal_repo.get_last_signal_of_types(
-                        conn, ts_code, ["ZIG_BUY", "ZIG_SELL"], before_date=trade_date
-                    )
-                    if last and (last.get("type") == "ZIG_BUY"):
-                        signal_repo.delete_signal_by_id(conn, int(last["id"]))
-
-                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                    _, sid = TdxZigSignalGenerator._insert_or_replace_zig_signal(
                         conn,
+                        ts_code,
                         trade_date,
-                        ts_code=ts_code,
-                        level="HIGH",
-                        signal_type="ZIG_BUY",
+                        "ZIG_BUY",
                         message=f"{ts_code} ZIG买入信号触发",
-                        days_back=5,
                     )
                     if sid:
                         signal_count += 1
                         signal_instruments.append(f"{ts_code}(ZIG买入)")
 
                 if sell_signal:
-                    last = signal_repo.get_last_signal_of_types(
-                        conn, ts_code, ["ZIG_BUY", "ZIG_SELL"], before_date=trade_date
-                    )
-                    if last and (last.get("type") == "ZIG_SELL"):
-                        signal_repo.delete_signal_by_id(conn, int(last["id"]))
-
-                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                    _, sid = TdxZigSignalGenerator._insert_or_replace_zig_signal(
                         conn,
+                        ts_code,
                         trade_date,
-                        ts_code=ts_code,
-                        level="HIGH",
-                        signal_type="ZIG_SELL",
+                        "ZIG_SELL",
                         message=f"{ts_code} ZIG卖出信号触发",
-                        days_back=5,
                     )
                     if sid:
                         signal_count += 1
@@ -752,8 +788,8 @@ class TdxZigSignalGenerator:
     def generate_zig_signals_for_date_with_guard(trade_date: str, min_delete_date: str | None = None,
                                                  ts_codes: list[str] | None = None) -> tuple[int, list[str]]:
         """
-        与 generate_zig_signals_for_date 类似，但在执行“同类连发删除上一条”时，
-        仅当上一条信号日期在 min_delete_date 及之后才允许删除，避免跨越重建区间边界。
+        与 generate_zig_signals_for_date 类似，并在检测到重复买/卖点时强制替换旧信号。
+        min_delete_date 参数保留向后兼容，但当前替换逻辑总是生效以符合通达信行为。
 
         Args:
             trade_date: YYYY-MM-DD
@@ -787,42 +823,24 @@ class TdxZigSignalGenerator:
                 buy_signal, sell_signal = TdxZigSignalGenerator.calculate_zig_signals(ts_code, trade_date)
 
                 if buy_signal:
-                    last = signal_repo.get_last_signal_of_types(
-                        conn, ts_code, ["ZIG_BUY", "ZIG_SELL"], before_date=trade_date
-                    )
-                    if last and last.get("type") == "ZIG_BUY":
-                        if (min_delete_date is None) or (str(last.get("trade_date")) >= min_delete_date):
-                            signal_repo.delete_signal_by_id(conn, int(last["id"]))
-
-                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                    _, sid = TdxZigSignalGenerator._insert_or_replace_zig_signal(
                         conn,
+                        ts_code,
                         trade_date,
-                        ts_code=ts_code,
-                        level="HIGH",
-                        signal_type="ZIG_BUY",
+                        "ZIG_BUY",
                         message=f"{ts_code} ZIG买入信号触发",
-                        days_back=5,
                     )
                     if sid:
                         signal_count += 1
                         signal_instruments.append(f"{ts_code}(ZIG买入)")
 
                 if sell_signal:
-                    last = signal_repo.get_last_signal_of_types(
-                        conn, ts_code, ["ZIG_BUY", "ZIG_SELL"], before_date=trade_date
-                    )
-                    if last and last.get("type") == "ZIG_SELL":
-                        if (min_delete_date is None) or (str(last.get("trade_date")) >= min_delete_date):
-                            signal_repo.delete_signal_by_id(conn, int(last["id"]))
-
-                    sid = signal_repo.insert_signal_if_no_recent_structure(
+                    _, sid = TdxZigSignalGenerator._insert_or_replace_zig_signal(
                         conn,
+                        ts_code,
                         trade_date,
-                        ts_code=ts_code,
-                        level="HIGH",
-                        signal_type="ZIG_SELL",
+                        "ZIG_SELL",
                         message=f"{ts_code} ZIG卖出信号触发",
-                        days_back=5,
                     )
                     if sid:
                         signal_count += 1
@@ -836,7 +854,7 @@ class TdxZigSignalGenerator:
         """
         重建指定时间段内的 ZIG 信号：
         1) 删除区间内（且可选限定标的）的 ZIG_BUY / ZIG_SELL
-        2) 按交易日顺序逐日重新生成（删除上一条同类仅限于区间内）
+        2) 按交易日顺序逐日重新生成，新的买/卖点会替换旧的同类信号
 
         Args:
             start_date: YYYY-MM-DD
@@ -1337,8 +1355,62 @@ def create_manual_signal_extended(trade_date: str, ts_code: str | None, category
     )
 
 
-def rebuild_all_historical_signals() -> dict[str, Any]:
-    """向后兼容的历史信号重建函数 - 功能已移除"""
-    # 这个函数已不再需要，因为我们移除了止盈止损信号生成逻辑
-    # 结构信号和ZIG信号通过其他专门的函数生成
-    return {"count": 0, "date_range": "功能已移除 - 不再自动生成止盈止损信号"}
+def rebuild_historical_signals(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    window_days: int = 90,
+) -> dict[str, Any]:
+    """重建历史信号，当前聚焦于结构类信号。"""
+
+    from datetime import datetime, timedelta
+
+    if end_date:
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    else:
+        end_dt = datetime.now()
+
+    if start_date:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    else:
+        start_dt = end_dt - timedelta(days=max(window_days, 1))
+
+    start = start_dt.strftime("%Y-%m-%d")
+    end = end_dt.strftime("%Y-%m-%d")
+
+    structure_stats = SignalGenerationService.rebuild_structure_signals_for_period(start, end)
+
+    return {
+        "structure": structure_stats,
+        "date_range": structure_stats.get("date_range", f"{start} ~ {end}"),
+        "processed_dates": structure_stats.get("processed_dates", 0),
+        "generated_signals": structure_stats.get("total_signals", 0),
+    }
+
+
+def rebuild_zig_signals(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    ts_codes: list[str] | None = None,
+    window_days: int = 90,
+) -> dict[str, Any]:
+    """重建指定时间窗口内的 ZIG 信号。"""
+
+    from datetime import datetime, timedelta
+
+    if end_date:
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    else:
+        end_dt = datetime.now()
+
+    if start_date:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    else:
+        start_dt = end_dt - timedelta(days=max(window_days, 1))
+
+    start = start_dt.strftime("%Y-%m-%d")
+    end = end_dt.strftime("%Y-%m-%d")
+
+    result = TdxZigSignalGenerator.rebuild_zig_signals_for_period(start, end, ts_codes)
+    if "date_range" not in result:
+        result["date_range"] = f"{start} ~ {end}"
+    return result

@@ -8,16 +8,6 @@ from .utils import yyyyMMdd_to_dash
 from .config_svc import get_config
 from ..repository import reporting_repo
 
-# _generate_historical_signals 函数已迁移到 signal_svc.SignalGenerationService
-
-def rebuild_all_historical_signals():
-    """重建所有历史信号，现在只包含结构信号和ZIG信号"""
-    # 这个函数已不再需要，因为我们移除了止盈止损信号生成逻辑
-    # 结构信号和ZIG信号通过其他专门的函数生成
-    return {"count": 0, "date_range": "功能已移除 - 不再自动生成止盈止损信号"}
-
-# _generate_historical_signals_for_instrument 函数已迁移到 signal_svc.SignalGenerationService
-
 def calc(date_yyyymmdd: str, log: OperationLogContext):
     """
     执行指定日期的信号生成

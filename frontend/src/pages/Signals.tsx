@@ -5,10 +5,9 @@ import dayjs, { Dayjs } from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 
 dayjs.extend(relativeTime);
-import { fetchAllSignals, generateStructureSignals, rebuildStructureSignals } from "../api/hooks";
-import client from "../api/client";
+import { fetchAllSignals, rebuildHistoricalSignals, rebuildZigSignals } from "../api/hooks";
 import type { SignalRow, SignalType, SignalLevel } from "../api/types";
-import { ReloadOutlined, AlertOutlined, PlusOutlined, HistoryOutlined, FunctionOutlined } from "@ant-design/icons";
+import { ReloadOutlined, AlertOutlined, PlusOutlined, HistoryOutlined, SyncOutlined } from "@ant-design/icons";
 import { SIGNAL_CONFIG, LEVEL_CONFIG } from "../utils/signalConfig";
 import CreateSignalModal from "../components/CreateSignalModal";
 import InstrumentDisplay from "../components/InstrumentDisplay";
@@ -24,8 +23,7 @@ export default function SignalsPage() {
   });
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
-  const [structureLoading, setStructureLoading] = useState(false);
-  const [rebuildStructureLoading, setRebuildStructureLoading] = useState(false);
+  const [zigRebuildLoading, setZigRebuildLoading] = useState(false);
 
   const loadSignals = async () => {
     setLoading(true);
@@ -49,8 +47,11 @@ export default function SignalsPage() {
   const handleRebuildHistorical = async () => {
     setRebuildLoading(true);
     try {
-      const { data } = await client.post("/api/signal/rebuild-historical");
-      message.success(`历史信号重建完成：生成${data.generated_signals}个信号，时间范围：${data.date_range}`);
+      const data = await rebuildHistoricalSignals();
+      const structureStats = data?.structure ?? {};
+      const totalSignals = structureStats?.total_signals ?? data?.generated_signals ?? 0;
+      const dateRange = data?.date_range ?? structureStats?.date_range ?? "指定区间";
+      message.success(`历史信号重建完成：结构信号${totalSignals}个，区间 ${dateRange}`);
       await loadSignals(); // 重新加载信号列表
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "重建历史信号失败");
@@ -59,30 +60,19 @@ export default function SignalsPage() {
     }
   };
 
-  const handleGenerateStructureSignals = async () => {
-    setStructureLoading(true);
+  const handleRebuildZigSignals = async () => {
+    setZigRebuildLoading(true);
     try {
-      const today = dayjs().format("YYYY-MM-DD");
-      const response = await generateStructureSignals(today);
-      message.success(`结构信号生成完成：${response.message}`);
-      await loadSignals(); // 重新加载信号列表
+      const response = await rebuildZigSignals();
+      const generated = response?.generated_signals ?? 0;
+      const deleted = response?.deleted_signals ?? 0;
+      const dateRange = response?.date_range ?? "指定区间";
+      message.success(`ZIG信号重建完成：新增${generated}条，删除${deleted}条，区间 ${dateRange}`);
+      await loadSignals();
     } catch (error: any) {
-      message.error(error?.message || "生成结构信号失败");
+      message.error(error?.message || error?.response?.data?.detail || "重建ZIG信号失败");
     } finally {
-      setStructureLoading(false);
-    }
-  };
-
-  const handleRebuildStructureSignals = async () => {
-    setRebuildStructureLoading(true);
-    try {
-      const response = await rebuildStructureSignals();
-      message.success(`结构信号重建完成：${response.message}`);
-      await loadSignals(); // 重新加载信号列表
-    } catch (error: any) {
-      message.error(error?.message || "重建结构信号失败");
-    } finally {
-      setRebuildStructureLoading(false);
+      setZigRebuildLoading(false);
     }
   };
 
@@ -261,25 +251,17 @@ export default function SignalsPage() {
             icon={<HistoryOutlined />}
             loading={rebuildLoading}
             onClick={handleRebuildHistorical}
-            title="重建所有历史信号，找到首次触发止盈/止损的正确日期"
+            title="重建历史信号（含结构信号回放）"
           >
             重建历史信号
           </Button>
           <Button 
-            icon={<FunctionOutlined />}
-            loading={structureLoading}
-            onClick={handleGenerateStructureSignals}
-            title="为今日生成结构信号"
+            icon={<SyncOutlined />}
+            loading={zigRebuildLoading}
+            onClick={handleRebuildZigSignals}
+            title="重新计算最近区间的ZIG信号"
           >
-            生成结构信号
-          </Button>
-          <Button 
-            icon={<HistoryOutlined />}
-            loading={rebuildStructureLoading}
-            onClick={handleRebuildStructureSignals}
-            title="重新计算所有历史结构信号"
-          >
-            重建结构信号
+            重建ZIG信号
           </Button>
         </Space>
       </div>

@@ -134,29 +134,26 @@ def api_zig_signal_validate():
 
 @router.post("/api/signal/rebuild-historical")
 def api_rebuild_historical_signals():
-    from ..services.signal_svc import rebuild_all_historical_signals
+    from ..services.signal_svc import rebuild_historical_signals
 
-    result = rebuild_all_historical_signals()
+    result = rebuild_historical_signals()
     return {
         "message": "历史信号重建完成",
-        "generated_signals": result["count"],
-        "date_range": result["date_range"],
+        "generated_signals": result.get("generated_signals", 0),
+        "processed_dates": result.get("processed_dates", 0),
+        "date_range": result.get("date_range"),
+        "structure": result.get("structure", {}),
     }
 
 
-@router.post("/api/signal/rebuild-structure")
-def api_rebuild_structure_signals():
-    from ..services.signal_svc import SignalGenerationService
-    from datetime import datetime, timedelta
+@router.post("/api/signal/rebuild-zig")
+def api_rebuild_zig_signals():
+    from ..services.signal_svc import rebuild_zig_signals
 
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    result = SignalGenerationService.rebuild_structure_signals_for_period(start_date, end_date)
+    result = rebuild_zig_signals()
     return {
-        "message": "结构信号重建完成",
-        "generated_signals": result["total_signals"],
-        "processed_dates": result["processed_dates"],
-        "date_range": result["date_range"],
+        "message": "ZIG信号重建完成",
+        **result,
     }
 
 
