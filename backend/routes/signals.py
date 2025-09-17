@@ -79,6 +79,16 @@ def api_zig_signal_validate():
             "expected_sell_dates": ["2025-06-11", "2025-08-29"],
         },
         {
+            "ts_code": "300573.SZ",
+            "expected_buy_dates": ["2025-04-08", "2025-05-29", "2025-06-23"],
+            "expected_sell_dates": ["2025-05-07", "2025-06-05", "2025-09-02"],
+        },
+        {
+            "ts_code": "002847.SZ",
+            "expected_buy_dates": ["2025-08-04"],
+            "expected_sell_dates": ["2025-06-05", "2025-09-02"],
+        },
+        {
             "ts_code": "159915.SZ",
             "expected_buy_dates": [],
             "expected_sell_dates": [],
@@ -165,4 +175,3 @@ def api_signal_create(signal: SignalCreate):
         message=signal.message,
     )
     return {"message": "信号创建成功", "signal_id": result}
-

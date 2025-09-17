@@ -463,138 +463,148 @@ class TdxStructureSignalGenerator:
 
 class TdxZigSignalGenerator:
     """通达信ZIG信号生成器 - 基于之字转向指标的买入/卖出信号判断"""
-    
+
+    PEAK = 1
+    VALLEY = -1
+
     @staticmethod
     def calculate_zig_indicator(closes: list[float], turn_percent: float = 10.0) -> list[float]:
-        """
-        TODO: 此ZIG算法需要继续优化，当前准确率84.6%
-        - 通达信ZIG是"未来函数"，会根据未来价格变化修改历史值
-        - 需要研究更精确的转向点确认机制
-        - 考虑引入第三方zigzag库的peak_valley_pivots算法
-        
-        计算ZIG之字转向指标 - 当前稳定版本（84.6%总体准确率）
-        
-        基于通达信ZIG(3,10)公式：
-        - K=3表示使用收盘价
-        - N=10表示10%转向阈值
-        
-        Args:
-            closes: 收盘价序列
-            turn_percent: 转向百分比阈值（默认10%）
-            
-        Returns:
-            ZIG指标值序列，使用线性插值填充转向点之间的值
-        """
+        """计算未来函数特性的ZIG指标，使用通达信阈值约定"""
         if len(closes) < 2:
             return closes.copy()
-        
-        n = len(closes)
-        zig = [None] * n
-        
-        # 初始化状态
-        zig[0] = closes[0]
-        last_pivot = closes[0]
+
+        prices = [float(v) for v in closes]
+        up_thresh = turn_percent / 100.0
+        down_thresh = -turn_percent / 100.0
+        pivots = TdxZigSignalGenerator._peak_valley_pivots(
+            prices, up_thresh, down_thresh
+        )
+
+        return TdxZigSignalGenerator._build_zig_from_pivots(prices, pivots)
+
+    @staticmethod
+    def _safe_ratio(numerator: float, denominator: float) -> float:
+        if denominator == 0:
+            if numerator == 0:
+                return 1.0
+            return float("inf") if numerator > 0 else float("-inf")
+        return numerator / denominator
+
+    @staticmethod
+    def _identify_initial_pivot(values: list[float], up_thresh: float, down_thresh: float) -> int:
+        x0 = float(values[0])
+        max_x = x0
+        min_x = x0
+        max_idx = 0
+        min_idx = 0
+
+        up_ratio = up_thresh + 1.0
+        down_ratio = down_thresh + 1.0
+
+        for idx in range(1, len(values)):
+            xt = float(values[idx])
+
+            if TdxZigSignalGenerator._safe_ratio(xt, min_x) >= up_ratio:
+                return TdxZigSignalGenerator.VALLEY if min_idx == 0 else TdxZigSignalGenerator.PEAK
+
+            if TdxZigSignalGenerator._safe_ratio(xt, max_x) <= down_ratio:
+                return TdxZigSignalGenerator.PEAK if max_idx == 0 else TdxZigSignalGenerator.VALLEY
+
+            if xt > max_x:
+                max_x = xt
+                max_idx = idx
+
+            if xt < min_x:
+                min_x = xt
+                min_idx = idx
+
+        tail_idx = len(values) - 1
+        return (
+            TdxZigSignalGenerator.VALLEY
+            if x0 < float(values[tail_idx])
+            else TdxZigSignalGenerator.PEAK
+        )
+
+    @staticmethod
+    def _peak_valley_pivots(values: list[float], up_thresh: float, down_thresh: float) -> list[int]:
+        if down_thresh > 0:
+            raise ValueError("down_thresh must be negative")
+
+        n = len(values)
+        pivots = [0] * n
+        initial = TdxZigSignalGenerator._identify_initial_pivot(values, up_thresh, down_thresh)
+        pivots[0] = initial
+
+        trend = -initial
         last_pivot_idx = 0
-        direction = 0  # 0=未确定, 1=上升, -1=下降
-        
-        high = closes[0]
-        high_idx = 0
-        low = closes[0]  
-        low_idx = 0
-        
-        for i in range(1, n):
-            price = closes[i]
-            
-            # 更新当前区间的极值点
-            if price > high:
-                high = price
-                high_idx = i
-            if price < low:
-                low = price
-                low_idx = i
-            
-            # 计算从上个确认转向点的变化幅度
-            if last_pivot != 0:
-                up_change = (high - last_pivot) / last_pivot * 100
-                down_change = (last_pivot - low) / last_pivot * 100
+        last_pivot_price = float(values[0])
+
+        up_ratio = up_thresh + 1.0
+        down_ratio = down_thresh + 1.0
+
+        for idx in range(1, n):
+            price = float(values[idx])
+            ratio = TdxZigSignalGenerator._safe_ratio(price, last_pivot_price)
+
+            if trend == TdxZigSignalGenerator.VALLEY:
+                if ratio >= up_ratio:
+                    pivots[last_pivot_idx] = trend
+                    trend = TdxZigSignalGenerator.PEAK
+                    last_pivot_price = price
+                    last_pivot_idx = idx
+                elif price < last_pivot_price:
+                    last_pivot_price = price
+                    last_pivot_idx = idx
             else:
-                up_change = down_change = 0
-            
-            # 状态机：检查转向条件
-            if direction == 0:
-                # 初始状态，寻找第一个显著移动
-                if up_change >= turn_percent:
-                    direction = 1
-                    zig[high_idx] = high
-                    last_pivot = high
-                    last_pivot_idx = high_idx
-                    low = high
-                    low_idx = high_idx
-                elif down_change >= turn_percent:
-                    direction = -1  
-                    zig[low_idx] = low
-                    last_pivot = low
-                    last_pivot_idx = low_idx
-                    high = low
-                    high_idx = low_idx
-            elif direction == 1:
-                # 上升趋势中，检查是否转向下降
-                if down_change >= turn_percent:
-                    direction = -1
-                    zig[low_idx] = low
-                    last_pivot = low
-                    last_pivot_idx = low_idx
-                    high = low
-                    high_idx = low_idx
-                else:
-                    # 继续上升，更新最高点
-                    if high_idx != last_pivot_idx:
-                        zig[high_idx] = high
-                        last_pivot = high
-                        last_pivot_idx = high_idx
-            elif direction == -1:
-                # 下降趋势中，检查是否转向上升
-                if up_change >= turn_percent:
-                    direction = 1
-                    zig[high_idx] = high
-                    last_pivot = high
-                    last_pivot_idx = high_idx  
-                    low = high
-                    low_idx = high_idx
-                else:
-                    # 继续下降，更新最低点
-                    if low_idx != last_pivot_idx:
-                        zig[low_idx] = low
-                        last_pivot = low
-                        last_pivot_idx = low_idx
-        
-        # 线性插值填充转向点之间的值
+                if ratio <= down_ratio:
+                    pivots[last_pivot_idx] = trend
+                    trend = TdxZigSignalGenerator.VALLEY
+                    last_pivot_price = price
+                    last_pivot_idx = idx
+                elif price > last_pivot_price:
+                    last_pivot_price = price
+                    last_pivot_idx = idx
+
+        last_idx = n - 1
+        if pivots[last_pivot_idx] == 0:
+            pivots[last_pivot_idx] = trend
+
+        if pivots[last_idx] == 0 and last_pivot_idx == last_idx:
+            pivots[last_idx] = trend
+
+        return pivots
+
+    @staticmethod
+    def _build_zig_from_pivots(prices: list[float], pivots: list[int]) -> list[float]:
+        n = len(prices)
         result = [0.0] * n
-        last_valid = 0
-        last_valid_idx = 0
-        
-        for i in range(n):
-            if zig[i] is not None:
-                # 填充从上一个转向点到当前转向点的线性插值
-                if last_valid_idx < i:
-                    for j in range(last_valid_idx, i + 1):
-                        if i > last_valid_idx:
-                            ratio = (j - last_valid_idx) / (i - last_valid_idx)
-                            result[j] = last_valid + ratio * (zig[i] - last_valid)
-                        else:
-                            result[j] = zig[i]
-                last_valid = zig[i]
-                last_valid_idx = i
+
+        pivot_indices = [idx for idx, flag in enumerate(pivots) if flag != 0]
+        if not pivot_indices:
+            pivot_indices = [0]
+
+        if pivot_indices[0] != 0:
+            pivot_indices.insert(0, 0)
+
+        if pivot_indices[-1] != n - 1:
+            pivot_indices.append(n - 1)
+
+        start_idx = pivot_indices[0]
+        result[start_idx] = prices[start_idx]
+
+        for next_idx in pivot_indices[1:]:
+            start_val = prices[start_idx]
+            end_val = prices[next_idx]
+            span = next_idx - start_idx
+
+            if span == 0:
+                result[next_idx] = end_val
             else:
-                # 处理最后一段：延续到当前价格
-                if i == n - 1 and last_valid_idx < i:
-                    for j in range(last_valid_idx, n):
-                        if i > last_valid_idx:
-                            ratio = (j - last_valid_idx) / (i - last_valid_idx)
-                            result[j] = last_valid + ratio * (closes[i] - last_valid)
-                        else:
-                            result[j] = last_valid
-        
+                for offset in range(span + 1):
+                    ratio = offset / span
+                    result[start_idx + offset] = start_val + ratio * (end_val - start_val)
+            start_idx = next_idx
+
         return result
     
     @staticmethod
