@@ -6,6 +6,7 @@ import CategoryTable from "../components/CategoryTable";
 import PositionTable from "../components/PositionTable";
 import PositionPie from "../components/charts/PositionPie";
 import { fetchDashboard, fetchCategory, fetchPosition, postCalc, syncPricesEnhanced, fetchAllSignals, getLastValidTradingDate, getLatestTradingDate } from "../api/hooks";
+import { fetchDashboardFull } from "../api/aggregated-hooks";
 import type { CategoryRow, PositionRow, SignalRow } from "../api/types";
 import { dashedToYmd } from "../utils/format";
 import { ReloadOutlined, CalculatorOutlined, CloudSyncOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
@@ -93,23 +94,19 @@ export default function Dashboard() {
   };
 
   /**
-   * 加载仪表板所有数据
+   * 加载仪表板所有数据 - 使用聚合API优化
    * 包括：仪表板汇总、类别数据、持仓数据、近一个月信号
    */
   const loadAll = async () => {
     setLoading(true);
     try {
-      // 获取一个月前的日期
-      const oneMonthAgo = currentDate.subtract(1, "month").format("YYYY-MM-DD");
-      const currentDateStr = currentDate.format("YYYY-MM-DD");
-      
-      const [d, c, p, signals] = await Promise.all([
-        fetchDashboard(ymd),
-        fetchCategory(ymd),
-        fetchPosition(ymd),
-        fetchAllSignals(undefined, undefined, oneMonthAgo, currentDateStr, 1000),
-      ]);
-      setDash(d); setCat(c); setPos(p); setMonthlySignals(signals || []);
+      // 使用聚合API一次获取所有Dashboard数据
+      const data = await fetchDashboardFull(ymd);
+
+      setDash(data.dashboard);
+      setCat(data.categories);
+      setPos(data.positions);
+      setMonthlySignals(data.signals || []);
     } catch (e:any) {
       message.error(e.message);
     } finally {

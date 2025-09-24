@@ -4,6 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { dashedToYmd } from "../utils/format";
 import { addWatchlist, fetchAllSignals, fetchInstruments, fetchWatchlist, removeWatchlist, fetchCategories, createInstrument, lookupInstrument } from "../api/hooks";
+import { fetchWatchlistFull } from "../api/aggregated-hooks";
 import type { InstrumentLite, SignalRow, WatchlistItem, CategoryLite } from "../api/types";
 import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
 import CandleChart from "../components/charts/CandleChart";
@@ -46,35 +47,16 @@ export default function WatchlistPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await fetchWatchlist(ymd);
-      setItems(data);
+      // 使用聚合API一次获取所有Watchlist数据
+      const data = await fetchWatchlistFull(ymd);
+
+      setItems(data.watchlist.items);
+      setItemSignals(data.signals_batch);
+
       // 保持当前选中项
       if (selected) {
-        const cur = data.find(d => d.ts_code === selected.ts_code) || null;
+        const cur = data.watchlist.items.find(d => d.ts_code === selected.ts_code) || null;
         setSelected(cur);
-      }
-      
-      // 为每个标的加载最近信号（最近30天，最多3条）
-      if (data.length > 0) {
-        const today = dayjs().format("YYYY-MM-DD");
-        const monthAgo = dayjs().subtract(30, "day").format("YYYY-MM-DD");
-        
-        // 并行加载所有标的的信号
-        const signalPromises = data.map(async (item) => {
-          try {
-            const signals = await fetchAllSignals(undefined, item.ts_code, monthAgo, today, 3);
-            return { ts_code: item.ts_code, signals: signals || [] };
-          } catch {
-            return { ts_code: item.ts_code, signals: [] };
-          }
-        });
-        
-        const signalResults = await Promise.all(signalPromises);
-        const signalsMap: Record<string, SignalRow[]> = {};
-        signalResults.forEach(({ ts_code, signals }) => {
-          signalsMap[ts_code] = signals;
-        });
-        setItemSignals(signalsMap);
       }
     } catch (e: any) {
       message.error(e?.message || "加载失败");

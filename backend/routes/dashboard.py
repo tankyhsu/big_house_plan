@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
+import warnings
 
 from ..services.dashboard_svc import (
     get_dashboard,
@@ -14,8 +15,17 @@ from ..services.dashboard_svc import (
 
 router = APIRouter()
 
-@router.get("/api/dashboard")
+@router.get("/api/dashboard", deprecated=True)
 def api_dashboard(date: str = Query(..., pattern=r"^\d{8}$")):
+    """
+    ⚠️ DEPRECATED: Use /api/aggregated/dashboard instead.
+    This endpoint will be removed in a future version.
+    """
+    warnings.warn(
+        "API /api/dashboard is deprecated. Use /api/aggregated/dashboard instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     return get_dashboard(date)
 
 @router.get("/api/dashboard/aggregate")
@@ -30,12 +40,30 @@ def api_dashboard_aggregate(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/api/category")
+@router.get("/api/category", deprecated=True)
 def api_category(date: str = Query(..., pattern=r"^\d{8}$")):
+    """
+    ⚠️ DEPRECATED: Use /api/aggregated/dashboard instead.
+    This endpoint will be removed in a future version.
+    """
+    warnings.warn(
+        "API /api/category is deprecated. Use /api/aggregated/dashboard instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     return list_category(date)
 
-@router.get("/api/position")
+@router.get("/api/position", deprecated=True)
 def api_position(date: str = Query(..., pattern=r"^\d{8}$")):
+    """
+    ⚠️ DEPRECATED: Use /api/aggregated/dashboard instead.
+    This endpoint will be removed in a future version.
+    """
+    warnings.warn(
+        "API /api/position is deprecated. Use /api/aggregated/dashboard instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     return list_position(date)
 
 @router.get("/api/signal")

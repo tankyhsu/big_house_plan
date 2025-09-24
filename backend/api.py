@@ -59,6 +59,7 @@ from .routes import analytics as analytics_routes
 from .routes import logs as logs_routes
 from .routes import maintenance as maintenance_routes
 from .routes import reports as reports_routes
+from .routes import aggregated as aggregated_routes
 
 app.include_router(base_routes.router)
 app.include_router(dashboard_routes.router)
@@ -73,3 +74,4 @@ app.include_router(analytics_routes.router)
 app.include_router(logs_routes.router)
 app.include_router(maintenance_routes.router)
 app.include_router(reports_routes.router)
+app.include_router(aggregated_routes.router)

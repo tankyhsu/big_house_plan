@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+import warnings
 
 from ..logs import OperationLogContext
 from ..db import get_conn
@@ -23,8 +24,17 @@ class TxnCreate(BaseModel):
     notes: str | None = None
 
 
-@router.get("/api/txn/list")
+@router.get("/api/txn/list", deprecated=True)
 def api_txn_list(page: int = 1, size: int = 20):
+    """
+    ⚠️ DEPRECATED: Use /api/aggregated/transactions instead.
+    This endpoint will be removed in a future version.
+    """
+    warnings.warn(
+        "API /api/txn/list is deprecated. Use /api/aggregated/transactions instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     total, items = list_txn(page, size)
     return {"total": total, "items": items}
 
@@ -132,9 +142,19 @@ def api_txn_bulk(body: BulkTxnReq):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/txn/monthly-stats")
+@router.get("/api/txn/monthly-stats", deprecated=True)
 def api_txn_monthly_stats():
-    """获取按月统计的交易盈亏情况"""
+    """
+    获取按月统计的交易盈亏情况
+
+    ⚠️ DEPRECATED: Use /api/aggregated/transactions instead.
+    This endpoint will be removed in a future version.
+    """
+    warnings.warn(
+        "API /api/txn/monthly-stats is deprecated. Use /api/aggregated/transactions instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     try:
         stats = get_monthly_pnl_stats()
         return {"items": stats}

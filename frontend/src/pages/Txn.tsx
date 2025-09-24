@@ -4,6 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { TxnItem, TxnCreate, InstrumentLite, CategoryLite, MonthlyPnlStats } from "../api/types";
 import { fetchTxnList, createTxn, fetchInstruments, fetchCategories, createInstrument, fetchPositionRaw, fetchLastPrice, lookupInstrument, fetchSettings, fetchMonthlyPnlStats } from "../api/hooks";
+import { fetchTransactionPage } from "../api/aggregated-hooks";
 import type { PositionRaw } from "../api/types";
 import { formatQuantity, formatPrice, fmtPct } from "../utils/format";
 import InstrumentDisplay, { createInstrumentOptions } from "../components/InstrumentDisplay";
@@ -58,16 +59,25 @@ export default function TxnPage() {
   const load = async (p = page, s = size) => {
     setLoading(true);
     try {
-      const res = await fetchTxnList(p, s);
-      setData(res.items);
-      setTotal(res.total);
+      // 使用聚合API一次获取Transaction页面所有数据
+      const res = await fetchTransactionPage(p, s);
+
+      setData(res.transactions.items);
+      setTotal(res.transactions.total);
+      setMonthlyStats(res.monthly_stats.items);
+      setInstOpts(res.instruments);
+      setCategories(res.categories_list);
+      setPosRaw(res.positions_raw);
+      setUnitAmount(res.settings?.unit_amount || 3000);
     } catch (e: any) {
       message.error(e.message);
     } finally {
       setLoading(false);
+      setStatsLoading(false);
     }
   };
 
+  // 保留单独的loadMonthlyStats函数以备其他地方调用
   const loadMonthlyStats = async () => {
     setStatsLoading(true);
     try {
@@ -82,12 +92,7 @@ export default function TxnPage() {
 
   useEffect(() => {
     load(1, size);
-    loadMonthlyStats();
-    // 预加载：标的、类别、配置
-    fetchInstruments().then(setInstOpts).catch(()=>{});
-    fetchCategories().then(setCategories).catch(()=>{});
-    fetchPositionRaw(true).then(setPosRaw).catch(()=>{});
-    fetchSettings().then(cfg => setUnitAmount(cfg.unit_amount || 3000)).catch(()=>{});
+    // 聚合API已经包含了所有需要的数据，无需额外调用
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

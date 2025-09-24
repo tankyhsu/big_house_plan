@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
+import warnings
 
 from ..services.watchlist_svc import list_watchlist, add_to_watchlist, remove_from_watchlist
 
@@ -13,8 +14,17 @@ class WatchlistAdd(BaseModel):
     note: str | None = None
 
 
-@router.get("/api/watchlist")
+@router.get("/api/watchlist", deprecated=True)
 def api_watchlist(date: str | None = Query(None, pattern=r"^\d{8}$")):
+    """
+    ⚠️ DEPRECATED: Use /api/aggregated/watchlist instead.
+    This endpoint will be removed in a future version.
+    """
+    warnings.warn(
+        "API /api/watchlist is deprecated. Use /api/aggregated/watchlist instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     try:
         items = list_watchlist(with_last_price=True, on_date_yyyymmdd=date)
         return {"items": items}
