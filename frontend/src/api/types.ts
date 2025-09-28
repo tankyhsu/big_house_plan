@@ -137,6 +137,70 @@ export type InstrumentDetail = {
   cat_sub?: string | null;
 };
 
+export type FundHolding = {
+  stock_code: string;
+  stock_name: string;
+  current_weight: number;
+  previous_weight: number;
+  weight_change: number;
+  current_mkv: number;
+  previous_mkv: number;
+  mkv_change: number;
+  current_amount: number;
+  is_new: boolean;
+  is_increased: boolean;
+  is_reduced: boolean;
+};
+
+export type FundShareData = {
+  ann_date?: string;
+  end_date?: string;
+  fund_type?: string;
+  total_share?: number;
+  holder_count?: number;
+  [key: string]: any;
+};
+
+export type FundNavData = {
+  ts_code?: string;
+  ann_date?: string;
+  nav_date?: string;
+  unit_nav?: number;
+  accum_nav?: number;
+  accum_div?: number;
+  net_asset?: number;
+  total_netasset?: number;
+  [key: string]: any;
+};
+
+export type FundManager = {
+  name: string;
+  gender?: string;
+  education?: string;
+  nationality?: string;
+  begin_date?: string;
+  end_date?: string;
+  resume?: string;
+};
+
+export type FundProfile = {
+  holdings: {
+    current: any[];
+    previous: any[];
+    changes: FundHolding[];
+    error?: string | null;
+  };
+  scale: {
+    recent_shares: FundShareData[];
+    nav_data: FundNavData[];
+    error?: string | null;
+  };
+  managers: {
+    current_managers: FundManager[];
+    error?: string | null;
+  };
+};
+
 export type SignalDetail = {
   id?: number;
   date: string;

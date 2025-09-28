@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, Select, Space, Typography, Table, DatePicker, Row, Col, Tabs, App, Modal } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals, syncPrices } from "../api/hooks";
+import { editInstrument, fetchCategories, fetchInstrumentDetail, fetchTxnRange, fetchOhlcRange, fetchPositionRaw, updatePositionOne, fetchAllSignals, syncPrices, fetchFundProfile } from "../api/hooks";
 import CandleChart from "../components/charts/CandleChart";
 import SignalTags from "../components/SignalTags";
-import type { CategoryLite, InstrumentDetail, SignalRow } from "../api/types";
+import type { CategoryLite, InstrumentDetail, SignalRow, FundProfile } from "../api/types";
 import dayjs, { Dayjs } from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { formatPrice, formatQuantity } from "../utils/format";
@@ -34,6 +34,8 @@ export default function InstrumentDetail() {
   const [chartKey, setChartKey] = useState(0); // K线图刷新key
   const [syncModalOpen, setSyncModalOpen] = useState(false); // 同步Modal状态
   const [syncForm] = Form.useForm(); // 同步日期范围表单
+  const [fundProfile, setFundProfile] = useState<FundProfile | null>(null); // 基金profile数据
+  const [fundProfileLoading, setFundProfileLoading] = useState(false); // 基金profile加载状态
 
   const load = async () => {
     setLoading(true);
@@ -49,10 +51,30 @@ export default function InstrumentDetail() {
         category_id: i.category_id || undefined,
         active: !!i.active,
       });
+
+      // If it's a fund, load fund profile data
+      if (i.type === "FUND") {
+        loadFundProfile();
+      }
     } catch (e: any) {
       message.error(e?.message || "加载失败");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFundProfile = async () => {
+    if (!ts_code) return;
+    setFundProfileLoading(true);
+    try {
+      const profile = await fetchFundProfile(ts_code);
+      setFundProfile(profile);
+    } catch (e: any) {
+      console.error("Failed to load fund profile:", e);
+      // Don't show error message, just fail silently
+      setFundProfile(null);
+    } finally {
+      setFundProfileLoading(false);
     }
   };
 
@@ -405,6 +427,250 @@ export default function InstrumentDetail() {
                 ),
               });
             }
+
+            // Add fund profile tab for fund instruments
+            if (t === 'FUND') {
+              items.push({
+                key: 'fund-profile',
+                label: '基金详情',
+                children: (
+                  <Card
+                    title="基金详情"
+                    loading={fundProfileLoading}
+                    extra={
+                      <Button size="small" onClick={loadFundProfile} disabled={fundProfileLoading}>
+                        刷新
+                      </Button>
+                    }
+                  >
+                    {fundProfile ? (
+                      <Tabs
+                        size="small"
+                        items={[
+                          {
+                            key: 'holdings',
+                            label: '持仓变化',
+                            children: (
+                              <div>
+                                {fundProfile.holdings.error ? (
+                                  <Typography.Text type="secondary">
+                                    {fundProfile.holdings.error === 'no_token' ? '需要配置TuShare Token' : `加载失败: ${fundProfile.holdings.error}`}
+                                  </Typography.Text>
+                                ) : fundProfile.holdings.changes.length > 0 ? (
+                                  <Table
+                                    size="small"
+                                    dataSource={fundProfile.holdings.changes.slice(0, 20)}
+                                    rowKey="stock_code"
+                                    pagination={false}
+                                    scroll={{ x: 800 }}
+                                    columns={[
+                                      {
+                                        title: '股票代码',
+                                        dataIndex: 'stock_code',
+                                        width: 100,
+                                        fixed: 'left'
+                                      },
+                                      {
+                                        title: '股票名称',
+                                        dataIndex: 'stock_name',
+                                        width: 120,
+                                        fixed: 'left'
+                                      },
+                                      {
+                                        title: '当前权重(%)',
+                                        dataIndex: 'current_weight',
+                                        width: 100,
+                                        render: (val: number) => formatQuantity(val, 2)
+                                      },
+                                      {
+                                        title: '上期权重(%)',
+                                        dataIndex: 'previous_weight',
+                                        width: 100,
+                                        render: (val: number) => formatQuantity(val, 2)
+                                      },
+                                      {
+                                        title: '权重变化',
+                                        dataIndex: 'weight_change',
+                                        width: 100,
+                                        render: (val: number) => {
+                                          const color = val > 0 ? '#f04438' : val < 0 ? '#12b76a' : '#667085';
+                                          return (
+                                            <span style={{ color }}>
+                                              {val > 0 ? '+' : ''}{formatQuantity(val, 2)}
+                                            </span>
+                                          );
+                                        }
+                                      },
+                                      {
+                                        title: '市值(万元)',
+                                        dataIndex: 'current_mkv',
+                                        width: 100,
+                                        render: (val: number) => formatPrice(val / 10000, 2)
+                                      },
+                                      {
+                                        title: '状态',
+                                        key: 'status',
+                                        width: 60,
+                                        render: (_, record: any) => {
+                                          if (record.is_new) return <span style={{ color: '#f04438' }}>新增</span>;
+                                          if (record.is_increased) return <span style={{ color: '#f04438' }}>增持</span>;
+                                          if (record.is_reduced) return <span style={{ color: '#12b76a' }}>减持</span>;
+                                          return <span style={{ color: '#667085' }}>持平</span>;
+                                        }
+                                      }
+                                    ]}
+                                  />
+                                ) : (
+                                  <Typography.Text type="secondary">暂无持仓数据</Typography.Text>
+                                )}
+                              </div>
+                            )
+                          },
+                          {
+                            key: 'scale',
+                            label: '基金规模',
+                            children: (
+                              <div>
+                                {fundProfile.scale.error ? (
+                                  <Typography.Text type="secondary">
+                                    {fundProfile.scale.error === 'no_token' ? '需要配置TuShare Token' : `加载失败: ${fundProfile.scale.error}`}
+                                  </Typography.Text>
+                                ) : (
+                                  <Row gutter={16}>
+                                    <Col xs={24} md={12}>
+                                      <Card size="small" title="份额数据">
+                                        {fundProfile.scale.recent_shares.length > 0 ? (
+                                          <Table
+                                            size="small"
+                                            dataSource={fundProfile.scale.recent_shares.slice(-5)}
+                                            rowKey="end_date"
+                                            pagination={false}
+                                            columns={[
+                                              {
+                                                title: '日期',
+                                                dataIndex: 'end_date',
+                                                render: (val: string) => val ? dayjs(val).format('YYYY-MM-DD') : '-'
+                                              },
+                                              {
+                                                title: '总份额(亿份)',
+                                                dataIndex: 'total_share',
+                                                render: (val: number) => val ? formatQuantity(val / 100000000, 2) : '-'
+                                              },
+                                              {
+                                                title: '持有人数',
+                                                dataIndex: 'holder_count',
+                                                render: (val: number) => val ? val.toLocaleString() : '-'
+                                              }
+                                            ]}
+                                          />
+                                        ) : (
+                                          <Typography.Text type="secondary">暂无份额数据</Typography.Text>
+                                        )}
+                                      </Card>
+                                    </Col>
+                                    <Col xs={24} md={12}>
+                                      <Card size="small" title="净值数据">
+                                        {fundProfile.scale.nav_data.length > 0 ? (
+                                          <Table
+                                            size="small"
+                                            dataSource={fundProfile.scale.nav_data.slice(-5)}
+                                            rowKey="nav_date"
+                                            pagination={false}
+                                            columns={[
+                                              {
+                                                title: '日期',
+                                                dataIndex: 'nav_date',
+                                                render: (val: string) => val ? dayjs(val).format('YYYY-MM-DD') : '-'
+                                              },
+                                              {
+                                                title: '单位净值',
+                                                dataIndex: 'unit_nav',
+                                                render: (val: number) => val ? formatPrice(val, 4) : '-'
+                                              },
+                                              {
+                                                title: '累计净值',
+                                                dataIndex: 'accum_nav',
+                                                render: (val: number) => val ? formatPrice(val, 4) : '-'
+                                              }
+                                            ]}
+                                          />
+                                        ) : (
+                                          <Typography.Text type="secondary">暂无净值数据</Typography.Text>
+                                        )}
+                                      </Card>
+                                    </Col>
+                                  </Row>
+                                )}
+                              </div>
+                            )
+                          },
+                          {
+                            key: 'managers',
+                            label: '基金经理',
+                            children: (
+                              <div>
+                                {fundProfile.managers.error ? (
+                                  <Typography.Text type="secondary">
+                                    {fundProfile.managers.error === 'no_token' ? '需要配置TuShare Token' : `加载失败: ${fundProfile.managers.error}`}
+                                  </Typography.Text>
+                                ) : fundProfile.managers.current_managers.length > 0 ? (
+                                  <div>
+                                    {fundProfile.managers.current_managers.map((manager, index) => (
+                                      <Card key={index} size="small" style={{ marginBottom: 12 }}>
+                                        <Row gutter={16}>
+                                          <Col xs={24} sm={8}>
+                                            <Typography.Text strong>{manager.name}</Typography.Text>
+                                            {manager.gender && (
+                                              <div style={{ color: '#98A2B3', fontSize: '12px' }}>
+                                                {manager.gender} {manager.nationality && `| ${manager.nationality}`}
+                                              </div>
+                                            )}
+                                          </Col>
+                                          <Col xs={24} sm={8}>
+                                            {manager.education && (
+                                              <div style={{ fontSize: '12px', color: '#475467' }}>
+                                                <strong>学历:</strong> {manager.education}
+                                              </div>
+                                            )}
+                                            {manager.begin_date && (
+                                              <div style={{ fontSize: '12px', color: '#475467' }}>
+                                                <strong>任职:</strong> {dayjs(manager.begin_date).format('YYYY-MM-DD')}
+                                                {manager.end_date && ` 至 ${dayjs(manager.end_date).format('YYYY-MM-DD')}`}
+                                              </div>
+                                            )}
+                                          </Col>
+                                          <Col xs={24} sm={8}>
+                                            {manager.resume && (
+                                              <Typography.Paragraph
+                                                style={{ fontSize: '12px', color: '#667085', margin: 0 }}
+                                                ellipsis={{ rows: 3, expandable: true, symbol: '展开' }}
+                                              >
+                                                <strong>履历:</strong> {manager.resume}
+                                              </Typography.Paragraph>
+                                            )}
+                                          </Col>
+                                        </Row>
+                                      </Card>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <Typography.Text type="secondary">暂无基金经理数据</Typography.Text>
+                                )}
+                              </div>
+                            )
+                          }
+                        ]}
+                      />
+                    ) : (
+                      <Typography.Text type="secondary">
+                        {fundProfileLoading ? '加载中...' : '暂无基金详情数据'}
+                      </Typography.Text>
+                    )}
+                  </Card>
+                ),
+              });
+            }
+
             items.push({
               key: 'txn',
               label: '交易记录',

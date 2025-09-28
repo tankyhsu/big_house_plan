@@ -18,6 +18,7 @@ from ..services.instrument_svc import (
     get_instrument_detail,
     edit_instrument,
 )
+from ..services.fund_svc import fetch_fund_profile
 from ..repository.instrument_repo import set_active as repo_set_active
 
 router = APIRouter()
@@ -115,6 +116,26 @@ def api_instrument_list():
 def api_instrument_get(ts_code: str = Query(...)):
     try:
         return get_instrument_detail(ts_code)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/fund/profile")
+def api_fund_profile(ts_code: str = Query(...)):
+    """Get fund profile including holdings, scale, and managers data."""
+    try:
+        # First check if instrument exists and is a fund
+        instrument = get_instrument_detail(ts_code)
+        if not instrument:
+            raise HTTPException(status_code=404, detail="Instrument not found")
+
+        if instrument.get("type") != "FUND":
+            raise HTTPException(status_code=404, detail="Not a fund instrument")
+
+        profile = fetch_fund_profile(ts_code)
+        return profile
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

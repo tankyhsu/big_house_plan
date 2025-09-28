@@ -40,6 +40,9 @@ class TuShareProvider:
         self._cache_trade_backfill: dict[tuple[str, int], str | None] = {}
         self._cache_fund_daily: dict[tuple[str, str, str], Any] = {}
         self._cache_fund_nav: dict[tuple[str, str, str], Any] = {}
+        self._cache_fund_portfolio: dict[tuple[str, str, str], Any] = {}
+        self._cache_fund_share: dict[tuple[str, str, str], Any] = {}
+        self._cache_fund_manager: dict[str, Any] = {}
 
         def _retry_call(fn, *args, tries=3, base_sleep=0.5, **kwargs):
             last_err = None
@@ -183,4 +186,49 @@ class TuShareProvider:
             return {"ts_code": ts_code, "name": r.get("name"), "found_date": r.get("found_date"), "fund_type": r.get("fund_type")}
         except Exception as e:
             print(f"[tushare_provider] fund_basic error: {e}")
+            return None
+
+    # -------- FUND PORTFOLIO --------
+    def fund_portfolio_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str):
+        """Fetch fund portfolio holdings for a date window."""
+        k = (ts_code, start_yyyymmdd, end_yyyymmdd)
+        if k in self._cache_fund_portfolio:
+            return self._cache_fund_portfolio[k]
+        self._rate.tick()
+        try:
+            df = self._retry_call(self.pro.fund_portfolio, ts_code=ts_code, start_date=start_yyyymmdd, end_date=end_yyyymmdd)
+            self._cache_fund_portfolio[k] = df
+            return df
+        except Exception as e:
+            print(f"[tushare_provider] fund_portfolio error: {e}")
+            self._cache_fund_portfolio[k] = None
+            return None
+
+    def fund_share_window(self, ts_code: str, start_yyyymmdd: str, end_yyyymmdd: str):
+        """Fetch fund share data for a date window."""
+        k = (ts_code, start_yyyymmdd, end_yyyymmdd)
+        if k in self._cache_fund_share:
+            return self._cache_fund_share[k]
+        self._rate.tick()
+        try:
+            df = self._retry_call(self.pro.fund_share, ts_code=ts_code, start_date=start_yyyymmdd, end_date=end_yyyymmdd)
+            self._cache_fund_share[k] = df
+            return df
+        except Exception as e:
+            print(f"[tushare_provider] fund_share error: {e}")
+            self._cache_fund_share[k] = None
+            return None
+
+    def fund_manager(self, ts_code: str):
+        """Fetch fund manager information."""
+        if ts_code in self._cache_fund_manager:
+            return self._cache_fund_manager[ts_code]
+        self._rate.tick()
+        try:
+            df = self._retry_call(self.pro.fund_manager, ts_code=ts_code)
+            self._cache_fund_manager[ts_code] = df
+            return df
+        except Exception as e:
+            print(f"[tushare_provider] fund_manager error: {e}")
+            self._cache_fund_manager[ts_code] = None
             return None

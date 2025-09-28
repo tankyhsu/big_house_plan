@@ -13,14 +13,18 @@ import { ReloadOutlined, CalculatorOutlined, CloudSyncOutlined, ExclamationCircl
 
 export default function Dashboard() {
   const { message } = App.useApp();
-  
+
   // 智能交易日逻辑
   const today = dayjs();
   const [currentDate, setCurrentDate] = useState(today); // 当前实际显示的日期
   const [isAfter7PM, setIsAfter7PM] = useState(false);
   const [lastValidTradingDate, setLastValidTradingDate] = useState<string | null>(null);
   const [showSyncPrompt, setShowSyncPrompt] = useState(false);
-  
+
+  // 添加会话存储状态来记住用户选择
+  const [syncPromptDismissed, setSyncPromptDismissed] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+
   const ymd = useMemo(() => dashedToYmd(currentDate.format("YYYY-MM-DD")), [currentDate]);
   const [loading, setLoading] = useState(false);
   const [cat, setCat] = useState<CategoryRow[]>([]);
@@ -28,11 +32,20 @@ export default function Dashboard() {
   const [dash, setDash] = useState<any>(null);
   const [monthlySignals, setMonthlySignals] = useState<SignalRow[]>([]);
 
+  // 检查会话存储中的用户偏好
+  useEffect(() => {
+    const dismissed = sessionStorage.getItem('syncPromptDismissed') === 'true';
+    const dontShow = sessionStorage.getItem('dontShowSyncPrompt') === 'true';
+    setSyncPromptDismissed(dismissed);
+    setDontShowAgain(dontShow);
+  }, []);
+
   /**
    * 智能交易日检测逻辑
    * 1. 获取price_eod表中的最新交易日作为基准
    * 2. 检测当前时间是否超过晚上7点
    * 3. 根据条件决定是否提醒用户同步数据或展示最新有效交易日数据
+   * 优化：添加会话存储避免重复弹窗
    */
   const checkTradingDateLogic = async () => {
     const now = dayjs();
@@ -58,7 +71,7 @@ export default function Dashboard() {
       // 判断是否需要提醒同步
       if (after7PM) {
         // 晚上7点后：如果最新交易日不是今天，提醒同步
-        if (!isLatestToday) {
+        if (!isLatestToday && !syncPromptDismissed && !dontShowAgain) {
           setShowSyncPrompt(true);
           return;
         }
@@ -76,7 +89,7 @@ export default function Dashboard() {
         } else {
           // 如果今天没有数据，可能需要提醒同步（取决于是否是工作日）
           const daysSinceLatest = today.diff(latestDate, 'day');
-          if (daysSinceLatest > 1) {
+          if (daysSinceLatest > 1 && !syncPromptDismissed && !dontShowAgain) {
             // 如果超过1天没有数据，提醒同步
             setShowSyncPrompt(true);
             return;
@@ -126,7 +139,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     checkTradingDateLogic();
-  }, []);
+  }, [syncPromptDismissed, dontShowAgain]); // 依赖更新：当用户偏好改变时重新检查
 
   useEffect(() => {
     if (!showSyncPrompt) {
@@ -176,6 +189,10 @@ export default function Dashboard() {
         
         // 同步完成后刷新页面数据
         await loadAll();
+
+        // 清除同步提醒状态，避免立即再次弹窗
+        setSyncPromptDismissed(true);
+        sessionStorage.setItem('syncPromptDismissed', 'true');
       }).catch((e: any) => {
         // 清除特定的loading提示
         loadingMsg();
@@ -195,6 +212,9 @@ export default function Dashboard() {
    */
   const handleSyncConfirm = async () => {
     setShowSyncPrompt(false);
+    setSyncPromptDismissed(true);
+    sessionStorage.setItem('syncPromptDismissed', 'true');
+
     onSync(); // 不等待同步完成，立即返回
     // 由于同步是异步的，不需要等待就重新检测交易日逻辑
     setTimeout(() => checkTradingDateLogic(), 1000);
@@ -205,10 +225,44 @@ export default function Dashboard() {
    */
   const handleSyncCancel = () => {
     setShowSyncPrompt(false);
+    setSyncPromptDismissed(true);
+    sessionStorage.setItem('syncPromptDismissed', 'true');
+
     // 使用最近有效交易日的数据
     if (lastValidTradingDate) {
       setCurrentDate(dayjs(lastValidTradingDate));
     }
+  };
+
+  /**
+   * 处理"不再提醒"选项
+   */
+  const handleDontShowAgain = () => {
+    setShowSyncPrompt(false);
+    setDontShowAgain(true);
+    setSyncPromptDismissed(true);
+
+    // 存储用户偏好
+    sessionStorage.setItem('dontShowSyncPrompt', 'true');
+    sessionStorage.setItem('syncPromptDismissed', 'true');
+
+    // 使用最近有效交易日的数据
+    if (lastValidTradingDate) {
+      setCurrentDate(dayjs(lastValidTradingDate));
+    }
+
+    message.info('已设置不再提醒，您可以随时点击"智能同步"按钮手动同步数据');
+  };
+
+  /**
+   * 重置同步提醒偏好（可供调试使用）
+   */
+  const resetSyncPreferences = () => {
+    sessionStorage.removeItem('syncPromptDismissed');
+    sessionStorage.removeItem('dontShowSyncPrompt');
+    setSyncPromptDismissed(false);
+    setDontShowAgain(false);
+    message.success('已重置同步提醒偏好');
   };
 
   return (
@@ -231,6 +285,10 @@ export default function Dashboard() {
           <Button icon={<CloudSyncOutlined />} onClick={onSync} loading={loading}>智能同步</Button>
           <Button type="primary" icon={<CalculatorOutlined />} onClick={onCalc}>重算</Button>
           <Button icon={<ReloadOutlined />} onClick={loadAll}>刷新</Button>
+          {/* 调试功能：重置同步提醒偏好 */}
+          {process.env.NODE_ENV === 'development' && (
+            <Button size="small" onClick={resetSyncPreferences}>重置提醒</Button>
+          )}
         </Space>
       </Flex>
 
@@ -260,7 +318,7 @@ export default function Dashboard() {
       {/* 明细列表 */}
       <PositionTable data={pos} loading={loading} signals={monthlySignals} />
 
-      {/* 数据同步提醒弹窗 */}
+      {/* 数据同步提醒弹窗 - 优化版 */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -271,21 +329,31 @@ export default function Dashboard() {
         open={showSyncPrompt}
         onOk={handleSyncConfirm}
         onCancel={handleSyncCancel}
-        okText="立即同步"
-        cancelText="稍后再说"
         confirmLoading={loading}
+        footer={[
+          <Button key="never" onClick={handleDontShowAgain}>
+            不再提醒
+          </Button>,
+          <Button key="cancel" onClick={handleSyncCancel}>
+            稍后再说
+          </Button>,
+          <Button key="ok" type="primary" loading={loading} onClick={handleSyncConfirm}>
+            立即同步
+          </Button>
+        ]}
       >
         <p>
-          {isAfter7PM 
-            ? "现在是交易日晚上7点后，检测到可能需要同步最新的价格数据。" 
+          {isAfter7PM
+            ? "现在是交易日晚上7点后，检测到可能需要同步最新的价格数据。"
             : "检测到价格数据可能不是最新的，"
           }
           是否需要同步最新的价格数据？
         </p>
         <p style={{ color: '#666' }}>
           当前数据库中最新交易日为：{lastValidTradingDate}<br/>
-          选择"立即同步"将获取最新数据并重新计算投资组合；
-          选择"稍后再说"将展示最近有效交易日的数据。
+          • 选择"立即同步"将获取最新数据并重新计算投资组合<br/>
+          • 选择"稍后再说"将展示最近有效交易日的数据<br/>
+          • 选择"不再提醒"将不再弹出此提醒（本次会话内有效）
         </p>
       </Modal>
     </Space>
